@@ -376,7 +376,7 @@ A: 32 bytes (256 bits) encoded as 44-character base64 strings.
 For more information:
 - 📖 Read **NOISE_TRANSPORT.md** for encryption details
 - 🔍 Check **examples/** directory for sample configs
-- 💬 Report issues at https://github.com/0xinf0/Nooshdaroo/issues
+- 💬 Report issues at https://github.com/sinarabbaani/Nooshdaroo/issues
 
 ---
 

@@ -5,12 +5,12 @@ Get started with Nooshdaroo in 5 minutes!
 ## Installation
 
 ```bash
-git clone https://github.com/0xinf0/proteus.git
-cd proteus
+git clone https://github.com/sinarabbaani/Nooshdaroo.git
+cd Nooshdaroo
 cargo build --release
 ```
 
-Binary location: `./target/release/proteus`
+Binary location: `./target/release/nooshdaroo`
 
 ## Basic Usage
 
@@ -232,12 +232,12 @@ safe_protocols = ["https", "tls13", "dns"]
 - Read [NOOSHDAROO_MOBILE.md](NOOSHDAROO_MOBILE.md) for mobile integration
 - Read [NOOSHDAROO_DESIGN.md](NOOSHDAROO_DESIGN.md) for architecture details
 - Check `examples/` directory for more configurations
-- Join discussions at https://github.com/0xinf0/proteus/discussions
+- Join discussions at https://github.com/sinarabbaani/Nooshdaroo/discussions
 
 ## Support
 
-- **Issues**: https://github.com/0xinf0/proteus/issues
-- **Discussions**: https://github.com/0xinf0/proteus/discussions
+- **Issues**: https://github.com/sinarabbaani/Nooshdaroo/issues
+- **Discussions**: https://github.com/sinarabbaani/Nooshdaroo/discussions
 - **Security**: See SECURITY.md for responsible disclosure
 
 ---

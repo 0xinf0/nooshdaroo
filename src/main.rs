@@ -18,7 +18,7 @@ use nooshdaroo::{
 
 #[derive(Parser)]
 #[command(name = "nooshdaroo")]
-#[command(author = "0xinf0")]
+#[command(author = "Sina Rabbani")]
 #[command(version = "0.1.0")]
 #[command(about = "Protocol Shape-Shifting SOCKS Proxy", long_about = None)]
 struct Cli {

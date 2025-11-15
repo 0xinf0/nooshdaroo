@@ -40,7 +40,7 @@ Nooshdaroo is a sophisticated proxy system that disguises encrypted SOCKS5 traff
 #### From Source
 
 ```bash
-git clone https://github.com/0xinf0/Nooshdaroo.git
+git clone https://github.com/sinarabbaani/Nooshdaroo.git
 cd Nooshdaroo
 cargo build --release
 ```
@@ -389,8 +389,8 @@ at your option.
 
 Original credit goes to [Proteus](https://github.com/unblockable/proteus).
 
-**Author**: 0xinf0
-**Repository**: https://github.com/0xinf0/Nooshdaroo
+**Author**: Sina Rabbani
+**Repository**: https://github.com/sinarabbaani/Nooshdaroo
 
 ---
 

@@ -475,7 +475,7 @@ nooshdaroo client \
 
 ```bash
 # From source
-git clone https://github.com/0xinf0/Nooshdaroo.git
+git clone https://github.com/sinarabbaani/Nooshdaroo.git
 cd Nooshdaroo
 cargo build --release
 
@@ -719,8 +719,8 @@ Choose whichever works best for your use case.
 - 📱 **Mobile**: [Mobile Guide](NOOSHDAROO_MOBILE.md)
 - 🚀 **Quick Start**: [Quick Start](NOOSHDAROO_QUICKSTART.md)
 - 🏗️ **Architecture**: [Design Doc](NOOSHDAROO_DESIGN.md)
-- 🐛 **Issues**: [GitHub Issues](https://github.com/0xinf0/Nooshdaroo/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/0xinf0/Nooshdaroo/discussions)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/sinarabbaani/Nooshdaroo/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/sinarabbaani/Nooshdaroo/discussions)
 
 ## Credits
 
@@ -730,8 +730,8 @@ Built with:
 - **Proteus** - Original proxy foundation
 - **Rathole** - Tunnel inspiration
 
-**Author**: 0xinf0
-**Repository**: https://github.com/0xinf0/Nooshdaroo
+**Author**: Sina Rabbani
+**Repository**: https://github.com/sinarabbaani/Nooshdaroo
 
 ---
 

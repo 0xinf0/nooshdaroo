@@ -3,7 +3,7 @@
 
 **Version 1.0**
 **Date: November 2025**
-**Author: 0xinf0**
+**Author: Sina Rabbani**
 **Email: sina@redteam.net**
 
 ---
@@ -1687,7 +1687,7 @@ We invite the research community to:
 4. Propose enhancements to detection resistance
 
 Nooshdaroo is open-source (MIT/Apache-2.0) and available at:
-**https://github.com/0xinf0/Nooshdaroo**
+**https://github.com/sinarabbaani/Nooshdaroo**
 
 ---
 
@@ -1917,4 +1917,4 @@ proxy_auth = "username:password"
 **License**: This whitepaper is licensed under CC BY 4.0.
 **Software**: Nooshdaroo is licensed under MIT OR Apache-2.0.
 **Contact**: sina@redteam.net
-**Website**: https://github.com/0xinf0/Nooshdaroo
+**Website**: https://github.com/sinarabbaani/Nooshdaroo

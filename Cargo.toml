@@ -2,12 +2,12 @@
 name = "nooshdaroo"
 version = "0.1.0"
 edition = "2021"
-authors = ["0xinf0"]
+authors = ["Sina Rabbani"]
 description = "Protocol Shape-Shifting SOCKS Proxy - Dynamic protocol emulation for encrypted proxy traffic"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-homepage = "https://github.com/0xinf0/Nooshdaroo"
-repository = "https://github.com/0xinf0/Nooshdaroo"
+homepage = "https://github.com/sinarabbaani/Nooshdaroo"
+repository = "https://github.com/sinarabbaani/Nooshdaroo"
 keywords = ["proxy", "socks", "protocol", "censorship", "obfuscation"]
 categories = ["network-programming", "cryptography", "command-line-utilities"]
 

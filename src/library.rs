@@ -386,8 +386,110 @@ impl ProtocolLibrary {
     }
 
     /// Scan directory for PSF files and load protocol metadata
-    fn scan_directory(&mut self, _dir: &Path) -> Result<(), crate::NooshdarooError> {
-        // TODO: Implement scanning for .psf files and loading metadata from JSON sidecar files
+    fn scan_directory(&mut self, dir: &Path) -> Result<(), crate::NooshdarooError> {
+        use std::fs;
+
+        // Recursively walk directory tree
+        self.scan_directory_recursive(dir)?;
+        Ok(())
+    }
+
+    /// Recursively scan directory for PSF files
+    fn scan_directory_recursive(&mut self, dir: &Path) -> Result<(), crate::NooshdarooError> {
+        use std::fs;
+
+        if !dir.is_dir() {
+            return Ok(());
+        }
+
+        for entry in fs::read_dir(dir).map_err(|e| crate::NooshdarooError::Io(e))? {
+            let entry = entry.map_err(|e| crate::NooshdarooError::Io(e))?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                // Recursively scan subdirectories
+                self.scan_directory_recursive(&path)?;
+            } else if path.extension().and_then(|s| s.to_str()) == Some("psf") {
+                // Load PSF file metadata
+                self.load_psf_file(&path)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Load protocol metadata from PSF file
+    fn load_psf_file(&mut self, path: &Path) -> Result<(), crate::NooshdarooError> {
+        use std::fs;
+
+        // Read PSF file
+        let content = fs::read_to_string(path)
+            .map_err(|e| crate::NooshdarooError::Io(e))?;
+
+        // Extract protocol name from filename
+        let filename = path.file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| crate::NooshdarooError::InvalidConfig("Invalid PSF filename".to_string()))?;
+
+        // Extract category from parent directory
+        let category = path.parent()
+            .and_then(|p| p.file_name())
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+
+        // Parse protocol name from first comment line or filename
+        let protocol_name = content.lines()
+            .find(|line| line.starts_with('#') && !line.contains("Protocol Signature"))
+            .and_then(|line| line.strip_prefix('#').map(|s| s.trim()))
+            .filter(|s| !s.is_empty() && !s.contains("(RFC") && !s.contains("Protocol"))
+            .unwrap_or(filename);
+
+        // Extract port from @SEGMENT.CRYPTO section
+        let default_port = content.lines()
+            .skip_while(|line| !line.contains("@SEGMENT.CRYPTO"))
+            .take_while(|line| !line.starts_with('@') || line.contains("@SEGMENT.CRYPTO"))
+            .find(|line| line.contains("DEFAULT_PORT:"))
+            .and_then(|line| line.split(':').nth(1))
+            .and_then(|s| s.trim().parse::<u16>().ok())
+            .unwrap_or(443);
+
+        // Extract transport type
+        let transport = if content.contains("TRANSPORT: TCP") {
+            Transport::Tcp
+        } else if content.contains("TRANSPORT: UDP") {
+            Transport::Udp
+        } else if content.contains("TRANSPORT: BOTH") {
+            Transport::Both
+        } else {
+            Transport::Tcp
+        };
+
+        // Check if encrypted
+        let encrypted = content.contains("CIPHER:") || content.contains("TLS") || content.contains("ENCRYPTION:");
+
+        // Build protocol metadata
+        let protocol = ProtocolBuilder::new(filename, protocol_name)
+            .port(default_port)
+            .transport(transport)
+            .packet_size(100, 1500) // Default sizes
+            .category(category)
+            .psf_path(path.to_path_buf());
+
+        let protocol = if encrypted {
+            protocol.encrypted()
+        } else {
+            protocol
+        };
+
+        let protocol = protocol
+            .detection(0.7, 0.2, 0.4) // Default detection values
+            .build();
+
+        // Add to library (avoid duplicates with built-in protocols)
+        if !self.protocols.contains_key(&protocol.id) {
+            self.add(protocol);
+        }
+
         Ok(())
     }
 }
