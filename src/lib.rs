@@ -66,13 +66,17 @@
 //! ```
 
 pub mod config;
+pub mod json_logger;
 pub mod library;
 pub mod mobile;
+pub mod multiport_server;
+pub mod netflow_evasion;
 pub mod protocol;
 pub mod proxy;
 pub mod shapeshift;
 pub mod socat;
 pub mod strategy;
+pub mod traceroute;
 pub mod traffic;
 
 // Re-export core types
@@ -82,7 +86,7 @@ pub use mobile::{MobileConfigBuilder, NooshdarooMobileConfig};
 pub use protocol::{DetectionScore, ProtocolId, ProtocolMeta, Transport};
 pub use proxy::{HttpProxyServer, ProxyType, UnifiedProxyListener};
 pub use shapeshift::ShapeShiftController;
-pub use socat::{RelayMode, SocatBuilder, SocatRelay};
+pub use socat::{Bidirectional, ClientToServer, RelayMode, ServerToClient, SocatBuilder, SocatRelay};
 pub use strategy::{ShapeShiftStrategy, StrategyType};
 
 use std::sync::Arc;

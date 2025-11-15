@@ -259,7 +259,7 @@ impl Default for DetectionConfig {
 
 impl NooshdarooConfig {
     /// Load configuration from TOML file
-    pub fn from_file(path: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_file(path: &std::path::Path) -> anyhow::Result<Self> {
         let contents = std::fs::read_to_string(path)?;
         let config: Self = toml::from_str(&contents)?;
         Ok(config)

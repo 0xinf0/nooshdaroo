@@ -6,13 +6,14 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use log::{info, warn};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use nooshdaroo::{
-    NooshdarooClient, NooshdarooConfig, NooshdarooServer, ProxyType, RelayMode, SocatBuilder,
-    UnifiedProxyListener,
+    Bidirectional, ClientToServer, NooshdarooClient, NooshdarooConfig, NooshdarooServer,
+    ProxyType, ServerToClient, SocatBuilder, UnifiedProxyListener,
 };
 
 #[derive(Parser)]
@@ -164,30 +165,22 @@ async fn run_client(
         _ => anyhow::bail!("Unknown proxy type: {}", proxy_type),
     };
 
-    let listener = UnifiedProxyListener::bind(bind, proxy_type).await?;
+    let bind_addr: SocketAddr = bind.parse()?;
+    let listener = UnifiedProxyListener::new(bind_addr, vec![proxy_type]);
 
     info!(
         "Nooshdaroo client ready - proxy type: {:?}",
-        listener.proxy_type()
+        proxy_type
     );
     info!(
         "Current protocol: {}",
         client.current_protocol().await.as_str()
     );
 
-    // Accept connections
-    loop {
-        match listener.accept().await {
-            Ok((stream, addr)) => {
-                info!("New connection from {}", addr);
-                // Handle connection here
-                // This would forward to the server with shape-shifting applied
-            }
-            Err(e) => {
-                warn!("Accept error: {}", e);
-            }
-        }
-    }
+    // Start listening for connections
+    listener.listen().await.map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    Ok(())
 }
 
 async fn run_server(config_path: Option<PathBuf>, bind: &str) -> Result<()> {
@@ -224,20 +217,19 @@ async fn run_server(config_path: Option<PathBuf>, bind: &str) -> Result<()> {
 async fn run_relay(listen: &str, target: &str, mode: &str) -> Result<()> {
     info!("Starting Nooshdaroo relay: {} -> {}", listen, target);
 
-    let relay_mode = match mode {
-        "bidirectional" => RelayMode::Bidirectional,
-        "client-to-server" => RelayMode::ClientToServer,
-        "server-to-client" => RelayMode::ServerToClient,
+    let relay_direction = match mode {
+        "bidirectional" => Bidirectional,
+        "client-to-server" => ClientToServer,
+        "server-to-client" => ServerToClient,
         _ => anyhow::bail!("Unknown relay mode: {}", mode),
     };
 
     let relay = SocatBuilder::new(listen, target)
-        .mode(relay_mode)
-        .build()?;
+        .mode(relay_direction);
 
-    info!("Relay ready - mode: {:?}", relay.mode());
+    info!("Relay ready - mode: {:?}", relay_direction);
 
-    relay.run().await
+    relay.run().await.map_err(|e| anyhow::anyhow!("{}", e))
 }
 
 async fn show_status(client: &str) -> Result<()> {
@@ -283,10 +275,8 @@ fn list_protocols(dir: &PathBuf) -> Result<()> {
     for (id, meta) in library.iter() {
         println!("ID: {}", id.as_str());
         println!("  Name: {}", meta.name);
-        println!("  Version: {}", meta.version);
         println!("  Transport: {:?}", meta.transport);
         println!("  Port: {}", meta.default_port);
-        println!("  Detection: {:?}", meta.detection_score);
         println!();
     }
 

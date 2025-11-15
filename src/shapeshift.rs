@@ -156,8 +156,8 @@ impl ShapeShiftController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::nooshdaroo::config::ShapeShiftConfig;
-    use crate::nooshdaroo::strategy::{FixedStrategy, TimeBasedStrategy};
+    use crate::config::ShapeShiftConfig;
+    use crate::strategy::{FixedStrategy, TimeBasedStrategy};
     use std::path::PathBuf;
 
     #[test]

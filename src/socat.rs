@@ -3,6 +3,17 @@
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
+/// Relay direction modes
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelayDirection {
+    /// Bidirectional data flow
+    Bidirectional,
+    /// Client to server only
+    ClientToServer,
+    /// Server to client only
+    ServerToClient,
+}
+
 /// Relay modes (like socat)
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -11,6 +22,7 @@ pub enum RelayMode {
     TcpToTcp {
         listen: String,
         connect: String,
+        direction: RelayDirection,
     },
     /// TCP to STDIO relay
     TcpToStdio {
@@ -29,6 +41,9 @@ pub enum RelayMode {
     },
 }
 
+// Re-export direction modes at the module level for convenience
+pub use RelayDirection::{Bidirectional, ClientToServer, ServerToClient};
+
 /// Socat-like bidirectional relay
 #[allow(dead_code)]
 pub struct SocatRelay {
@@ -44,8 +59,8 @@ impl SocatRelay {
     /// Start relay
     pub async fn start(self) -> Result<(), Box<dyn std::error::Error>> {
         match self.mode {
-            RelayMode::TcpToTcp { listen, connect } => {
-                Self::tcp_to_tcp(listen, connect).await
+            RelayMode::TcpToTcp { listen, connect, direction } => {
+                Self::tcp_to_tcp(listen, connect, direction).await
             }
             RelayMode::TcpToStdio { address } => Self::tcp_to_stdio(address).await,
             RelayMode::FileToTcp { file_path, address } => {
@@ -59,10 +74,16 @@ impl SocatRelay {
         }
     }
 
+    /// Get mode reference
+    pub fn mode(&self) -> &RelayMode {
+        &self.mode
+    }
+
     /// TCP to TCP relay (basic socat functionality)
     async fn tcp_to_tcp(
         listen: String,
         connect: String,
+        _direction: RelayDirection,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let listener = tokio::net::TcpListener::bind(&listen).await?;
         log::info!("Socat relay: {} -> {}", listen, connect);
@@ -208,12 +229,23 @@ async fn encrypted_relay_connection(
 /// Builder for socat-like command line interface
 #[allow(dead_code)]
 pub struct SocatBuilder {
-    mode: Option<RelayMode>,
+    listen: Option<String>,
+    target: Option<String>,
+    direction: RelayDirection,
 }
 
 impl SocatBuilder {
-    pub fn new() -> Self {
-        Self { mode: None }
+    pub fn new(listen: &str, target: &str) -> Self {
+        Self {
+            listen: Some(listen.to_string()),
+            target: Some(target.to_string()),
+            direction: RelayDirection::Bidirectional,
+        }
+    }
+
+    pub fn mode(mut self, direction: RelayDirection) -> Self {
+        self.direction = direction;
+        self
     }
 
     /// Parse socat-like arguments
@@ -233,10 +265,15 @@ impl SocatBuilder {
         let (left_type, left_addr) = parse_address_spec(left)?;
         let (right_type, right_addr) = parse_address_spec(right)?;
 
-        self.mode = Some(match (left_type.as_str(), right_type.as_str()) {
+        // Store addresses for building
+        self.listen = Some(left_addr.clone());
+        self.target = Some(right_addr.clone());
+
+        let _mode = match (left_type.as_str(), right_type.as_str()) {
             ("TCP-LISTEN", "TCP") | ("TCP4-LISTEN", "TCP") => RelayMode::TcpToTcp {
                 listen: left_addr,
                 connect: right_addr,
+                direction: self.direction,
             },
             ("TCP", "STDIO") => RelayMode::TcpToStdio { address: left_addr },
             ("FILE", "TCP") => RelayMode::FileToTcp {
@@ -249,21 +286,39 @@ impl SocatBuilder {
                 protocol: args.get(2).cloned().unwrap_or_else(|| "https".to_string()),
             },
             _ => return Err(format!("Unsupported combination: {} -> {}", left_type, right_type)),
-        });
+        };
 
         Ok(self)
     }
 
     pub fn build(self) -> Result<SocatRelay, String> {
-        Ok(SocatRelay {
-            mode: self.mode.ok_or("No mode specified")?,
-        })
+        let listen = self.listen.ok_or("No listen address specified")?;
+        let target = self.target.ok_or("No target address specified")?;
+
+        let mode = RelayMode::TcpToTcp {
+            listen,
+            connect: target,
+            direction: self.direction,
+        };
+
+        Ok(SocatRelay { mode })
+    }
+
+    pub fn run(self) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> {
+        async move {
+            let relay = self.build().map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, e)) as Box<dyn std::error::Error>)?;
+            relay.start().await
+        }
     }
 }
 
 impl Default for SocatBuilder {
     fn default() -> Self {
-        Self::new()
+        Self {
+            listen: None,
+            target: None,
+            direction: RelayDirection::Bidirectional,
+        }
     }
 }
 
@@ -308,7 +363,7 @@ mod tests {
             "TCP-LISTEN:8080".to_string(),
             "TCP:example.com:80".to_string(),
         ];
-        let builder = SocatBuilder::new().parse_args(&args);
+        let builder = SocatBuilder::default().parse_args(&args);
         assert!(builder.is_ok());
     }
 }

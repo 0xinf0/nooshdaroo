@@ -339,4 +339,4 @@ Nooshdaroo is built on top of [Proteus](https://github.com/0xinf0/proteus), whic
 
 ---
 
-**النوشداروء** (Nooshdaroo) - Persian for "antidote" or "cure"
+**نوشدارو** (Nooshdaroo) - Persian for "antidote" or "cure"

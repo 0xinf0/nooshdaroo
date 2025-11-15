@@ -27,6 +27,7 @@ async-trait = "0.1.0"
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
+serde_json = "1.0"
 toml = "0.8"
 
 # Network utilities
@@ -47,6 +48,7 @@ anyhow = "1.0"
 
 # Time parsing
 humantime-serde = "1.1"
+humantime = "2.1"
 
 # System calls (for transparent proxy)
 libc = "0.2"

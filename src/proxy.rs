@@ -319,6 +319,7 @@ mod tests {
         buf.put_u8(0x05); // SOCKS version
         buf.put_u8(0x01); // Number of methods
         buf.put_u8(0x00); // No auth
+        buf.put_u8(0x00); // Padding to meet 4-byte minimum
 
         let result = detect_proxy_type(&buf, &[ProxyType::Socks5, ProxyType::Http]);
         assert!(result.is_ok());

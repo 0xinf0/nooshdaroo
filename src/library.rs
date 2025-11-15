@@ -12,7 +12,7 @@ pub struct ProtocolLibrary {
 
 impl ProtocolLibrary {
     /// Load protocol library from directory
-    pub fn load(protocol_dir: &Path) -> Result<Self, crate::nooshdaroo::NooshdarooError> {
+    pub fn load(protocol_dir: &Path) -> Result<Self, crate::NooshdarooError> {
         let mut library = Self {
             protocols: HashMap::new(),
             protocol_dir: protocol_dir.to_path_buf(),
@@ -37,6 +37,21 @@ impl ProtocolLibrary {
     /// Get all protocols
     pub fn all(&self) -> Vec<&ProtocolMeta> {
         self.protocols.values().collect()
+    }
+
+    /// Iterate over all protocols (id, meta)
+    pub fn iter(&self) -> impl Iterator<Item = (&ProtocolId, &ProtocolMeta)> {
+        self.protocols.iter()
+    }
+
+    /// Get number of protocols
+    pub fn len(&self) -> usize {
+        self.protocols.len()
+    }
+
+    /// Check if library is empty
+    pub fn is_empty(&self) -> bool {
+        self.protocols.is_empty()
     }
 
     /// Get protocols by category
@@ -371,7 +386,7 @@ impl ProtocolLibrary {
     }
 
     /// Scan directory for PSF files and load protocol metadata
-    fn scan_directory(&mut self, _dir: &Path) -> Result<(), crate::nooshdaroo::NooshdarooError> {
+    fn scan_directory(&mut self, _dir: &Path) -> Result<(), crate::NooshdarooError> {
         // TODO: Implement scanning for .psf files and loading metadata from JSON sidecar files
         Ok(())
     }
