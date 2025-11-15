@@ -81,6 +81,7 @@ pub mod socat;
 pub mod strategy;
 pub mod traceroute;
 pub mod traffic;
+pub mod udp_proxy;
 
 // Re-export core types
 pub use app_profiles::{ApplicationEmulator, ApplicationProfile, AppCategory};
@@ -100,6 +101,7 @@ pub use proxy::{HttpProxyServer, ProxyType, UnifiedProxyListener};
 pub use shapeshift::ShapeShiftController;
 pub use socat::{Bidirectional, ClientToServer, RelayMode, ServerToClient, SocatBuilder, SocatRelay};
 pub use strategy::{ShapeShiftStrategy, StrategyType};
+pub use udp_proxy::{SimpleUdpForwarder, UdpProxyServer};
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
