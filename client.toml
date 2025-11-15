@@ -1,0 +1,13 @@
+[client]
+bind_address = "127.0.0.1:1080"
+server_address = "23.128.36.41:8443"
+
+[transport]
+pattern = "nk"
+remote_public_key = "0SFi6DDPeASU6HWjafauihAFd7RJLAbuDFiVs9r4cQs="
+
+[shaping]
+enabled = true
+
+[protocols]
+directory = "protocols"
