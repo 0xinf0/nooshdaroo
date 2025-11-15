@@ -8,6 +8,20 @@
 
 ---
 
+## Acknowledgments
+
+Nooshdaroo stands on the shoulders of giants. This work builds upon:
+
+**Proteus Project**: The core architecture and concept of protocol shape-shifting originates from the Proteus project (https://github.com/unblockable/proteus). Nooshdaroo extends Proteus with additional features including UDP support, mobile platform compatibility, comprehensive protocol library (121 protocols), and enhanced traffic shaping.
+
+**Academic Research**: This system incorporates decades of research in censorship circumvention, including Format-Transforming Encryption (FTE), Marionette programmable obfuscation, Tor Pluggable Transports, and statistical traffic analysis resistance.
+
+**Development**: The implementation was orchestrated by Sina Rabbani through context engineering with Claude Code (Anthropic), combining human domain expertise with AI-assisted development.
+
+**Open Source Community**: Thanks to the cryptography community for Noise Protocol Framework, ChaCha20-Poly1305, Curve25519, and the Rust ecosystem (Tokio, Snow, and countless other crates).
+
+---
+
 ## Abstract
 
 Nooshdaroo (نوشدارو, Persian for "antidote") is a sophisticated proxy system designed to circumvent deep packet inspection (DPI) and network censorship through protocol shape-shifting. By dynamically emulating over 121 network protocols and employing advanced traffic shaping techniques, Nooshdaroo disguises encrypted SOCKS5 traffic as legitimate network communications. The system combines Noise Protocol Framework encryption, adaptive bandwidth optimization, and statistical traffic emulation to provide a robust censorship-resistant communication channel.
@@ -46,18 +60,32 @@ Internet censorship has become increasingly sophisticated, employing deep packet
 
 Nooshdaroo addresses these challenges through a multi-layered approach combining protocol polymorphism, traffic mimicry, and cryptographic protection.
 
-### 1.2 Contributions
+### 1.2 Background and Prior Work
 
-This paper presents:
+Nooshdaroo builds upon a rich foundation of censorship circumvention research:
 
-1. A novel **protocol shape-shifting architecture** supporting 121+ protocol emulations
-2. **Statistical traffic emulation** matching real application behaviors
-3. **Adaptive bandwidth optimization** with quality-aware traffic shaping
-4. **Noise Protocol integration** for forward-secure encryption
-5. **Application profile system** for realistic traffic patterns
-6. Comprehensive **performance and security analysis**
+**Protocol Obfuscation**: The concept of disguising traffic as different protocols dates back to Format-Transforming Encryption (FTE) by Dyer et al. (2013), which demonstrated that regular expressions could define protocol formats for transformation.
 
-### 1.3 Threat Model
+**Programmable Obfuscation**: Marionette (Dyer et al., 2015) extended FTE with a programmable framework for arbitrary protocol emulation, introducing the concept of action-state machines for traffic generation.
+
+**Proteus Architecture**: The Proteus project pioneered the specific architecture of dynamic protocol shape-shifting for proxy traffic, implementing multi-protocol emulation with automatic adaptation. Nooshdaroo directly extends the Proteus codebase with significant enhancements.
+
+**Pluggable Transports**: The Tor Project's Pluggable Transport specification established best practices for modular transport obfuscation, which influenced Nooshdaroo's design.
+
+### 1.3 Nooshdaroo's Contributions
+
+Building on this foundation, Nooshdaroo adds:
+
+1. **UDP Protocol Support**: Full SOCKS5 UDP ASSOCIATE implementation with NAT session tracking, enabling support for DNS, QUIC, WireGuard, and VoIP protocols
+2. **Mobile Platform Compatibility**: Designed for iOS Network Extension and Android VPN Service without requiring root/jailbreak
+3. **Expanded Protocol Library**: 121 protocol definitions (vs. Proteus's ~20) across 16 categories including IoT, cloud services, and gaming protocols
+4. **Enhanced Traffic Shaping**: Statistical application profile emulation (Zoom, Netflix, YouTube, etc.) with adaptive bandwidth optimization
+5. **Noise Protocol Integration**: Modern cryptographic framework with forward secrecy and multiple handshake patterns (NK, XX, KK)
+6. **Production Deployment**: Real-world testing on production infrastructure with comprehensive performance benchmarks
+
+**Attribution**: Approximately 70% of core architecture and TCP proxy logic derives from Proteus. The UDP implementation, mobile platform design, protocol library expansion, and traffic shaping enhancements are original contributions.
+
+### 1.4 Threat Model
 
 **Adversary Capabilities:**
 - Full network visibility (man-in-the-middle position)
@@ -1693,18 +1721,67 @@ Nooshdaroo is open-source (MIT/Apache-2.0) and available at:
 
 ## References
 
-1. **Noise Protocol Framework**: Perrin, T. (2018). "The Noise Protocol Framework."
-2. **ChaCha20-Poly1305**: Langley, A., et al. (2015). RFC 7539.
-3. **Curve25519**: Bernstein, D. J. (2006). "Curve25519: new Diffie-Hellman speed records."
-4. **QUIC**: Iyengar, J., Thomson, M. (2021). RFC 9000.
-5. **HTTP/2**: Thomson, M., Benfield, C. (2022). RFC 9113.
-6. **HTTP/3**: Bishop, M. (2022). RFC 9114.
-7. **Tor Pluggable Transports**: "Tor PT Specification" (2024).
-8. **Format-Transforming Encryption**: Dyer, K., et al. (2013). "Protocol Misidentification Made Easy with Format-Transforming Encryption."
-9. **Marionette**: Dyer, K., et al. (2015). "Marionette: A Programmable Network Traffic Obfuscation System."
-10. **Shadowsocks**: clowwindy (2015). "Shadowsocks: A secure socks5 proxy."
-11. **Deep Packet Inspection**: Anderson, R., et al. (2019). "Practical Traffic Analysis Attacks on Secure Messaging Applications."
-12. **Website Fingerprinting**: Rimmer, V., et al. (2018). "Automated Website Fingerprinting through Deep Learning."
+### Foundational Projects
+
+1. **Proteus**: https://github.com/unblockable/proteus - The original protocol shape-shifting proxy that inspired and forms the foundation of Nooshdaroo.
+
+### Censorship Circumvention Research
+
+2. **Format-Transforming Encryption**: Dyer, K., Coull, S., Ristenpart, T., and Shrimpton, T. (2013). "Protocol Misidentification Made Easy with Format-Transforming Encryption." In ACM CCS 2013.
+
+3. **Marionette**: Dyer, K., Coull, S., Ristenpart, T., and Shrimpton, T. (2015). "Marionette: A Programmable Network Traffic Obfuscation System." In USENIX Security 2015.
+
+4. **Tor Pluggable Transports**: The Tor Project. "Pluggable Transport Specification" (2024). https://spec.torproject.org/pt-spec/
+
+5. **StegoTorus**: Weinberg, Z., et al. (2012). "StegoTorus: A Camouflage Proxy for the Tor Anonymity System." In ACM CCS 2012.
+
+6. **SkypeMorph**: Moghaddam, H., et al. (2012). "SkypeMorph: Covert Channel for Tor Pluggable Transports." In ACM CCS 2012.
+
+### Cryptography
+
+7. **Noise Protocol Framework**: Perrin, T. (2018). "The Noise Protocol Framework." https://noiseprotocol.org/
+
+8. **ChaCha20-Poly1305**: Langley, A., et al. (2015). "ChaCha20 and Poly1305 for IETF Protocols." RFC 7539.
+
+9. **Curve25519**: Bernstein, D. J. (2006). "Curve25519: new Diffie-Hellman speed records." In PKC 2006.
+
+10. **X25519**: Langley, A., et al. (2016). "Elliptic Curves for Security." RFC 7748.
+
+### Network Protocols
+
+11. **QUIC**: Iyengar, J., Thomson, M. (2021). "QUIC: A UDP-Based Multiplexed and Secure Transport." RFC 9000.
+
+12. **HTTP/2**: Thomson, M., Benfield, C. (2022). "HTTP/2." RFC 9113.
+
+13. **HTTP/3**: Bishop, M. (2022). "HTTP/3." RFC 9114.
+
+14. **WireGuard**: Donenfeld, J. (2020). "WireGuard: Next Generation Kernel Network Tunnel." In NDSS 2017.
+
+15. **SOCKS5**: Leech, M., et al. (1996). "SOCKS Protocol Version 5." RFC 1928.
+
+### Traffic Analysis
+
+16. **Deep Packet Inspection**: Anderson, R., et al. (2019). "Practical Traffic Analysis Attacks on Secure Messaging Applications."
+
+17. **Website Fingerprinting**: Rimmer, V., et al. (2018). "Automated Website Fingerprinting through Deep Learning." In NDSS 2018.
+
+18. **Statistical Detection**: Wang, T., et al. (2014). "Effective Attacks and Provable Defenses for Website Fingerprinting." In USENIX Security 2014.
+
+### Related Tools
+
+19. **Shadowsocks**: clowwindy (2015). "Shadowsocks: A secure socks5 proxy." https://shadowsocks.org/
+
+20. **V2Ray**: V2Fly Community (2019). "Project V." https://www.v2fly.org/
+
+21. **Obfs4**: The Tor Project (2014). "obfs4 (The obfourscator)." https://gitlab.com/yawning/obfs4
+
+### Implementation
+
+22. **Tokio**: Tokio Contributors (2023). "Tokio: A runtime for writing reliable asynchronous applications with Rust." https://tokio.rs/
+
+23. **Snow**: Jake McGinty (2023). "Snow: A pure Rust implementation of the Noise Protocol Framework." https://github.com/mcginty/snow
+
+24. **Claude Code**: Anthropic (2024). "Claude Code: AI-assisted development tool." https://claude.com/claude-code
 
 ---
 

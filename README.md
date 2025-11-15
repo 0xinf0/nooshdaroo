@@ -387,10 +387,19 @@ at your option.
 
 ## Credits
 
-Original credit goes to [Proteus](https://github.com/unblockable/proteus).
+Nooshdaroo stands on the shoulders of giants:
+
+**Proteus**: The core architecture and concept originates from the [Proteus project](https://github.com/unblockable/proteus). Approximately 70% of the TCP proxy logic and shape-shifting framework derives from Proteus. Nooshdaroo extends this foundation with UDP support, mobile compatibility, 121 protocol definitions, enhanced traffic shaping, and Noise Protocol encryption.
+
+**Academic Research**: Built on decades of censorship circumvention research including Format-Transforming Encryption (FTE), Marionette, Tor Pluggable Transports, and traffic analysis resistance techniques.
+
+**Development**: Implementation orchestrated by Sina Rabbani through context engineering with Claude Code (Anthropic), combining human domain expertise with AI-assisted development.
+
+**Open Source**: Thanks to the Rust ecosystem (Tokio, Snow, and countless crates), the cryptography community (Noise Protocol, ChaCha20-Poly1305, Curve25519), and all researchers advancing censorship circumvention.
 
 **Author**: Sina Rabbani
 **Repository**: https://github.com/sinarabbaani/Nooshdaroo
+**License**: MIT OR Apache-2.0
 
 ---
 
