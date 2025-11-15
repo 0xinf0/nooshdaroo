@@ -1,0 +1,51 @@
+# NFS Protocol Signature (RFC 1813)
+# Network File System
+
+@SEGMENT.FORMATS
+
+DEFINE NfsRpcCall
+  { NAME: xid           ; TYPE: u32 },
+  { NAME: msg_type      ; TYPE: u32 },
+  { NAME: rpc_version   ; TYPE: u32 },
+  { NAME: program       ; TYPE: u32 },
+  { NAME: version       ; TYPE: u32 },
+  { NAME: procedure     ; TYPE: u32 },
+  { NAME: credentials   ; TYPE: [u8; variable] },
+  { NAME: verifier      ; TYPE: [u8; variable] },
+  { NAME: data          ; TYPE: [u8; variable] };
+
+DEFINE NfsRpcReply
+  { NAME: xid           ; TYPE: u32 },
+  { NAME: msg_type      ; TYPE: u32 },
+  { NAME: reply_state   ; TYPE: u32 },
+  { NAME: verifier      ; TYPE: [u8; variable] },
+  { NAME: accept_state  ; TYPE: u32 },
+  { NAME: data          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE NfsRpcCall.msg_type
+  FIXED_VALUE: 0;
+
+DEFINE NfsRpcCall.program
+  FIXED_VALUE: 100003;
+
+DEFINE NfsRpcCall.procedure
+  SEMANTIC: NFS_PROCEDURE
+  VALUES: { NULL: 0, GETATTR: 1, SETATTR: 2, LOOKUP: 3, ACCESS: 4, READLINK: 5,
+            READ: 6, WRITE: 7, CREATE: 8, MKDIR: 9, REMOVE: 12, RMDIR: 13 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: NfsRpcCall;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: NfsRpcReply;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+DEFAULT_PORT: 2049

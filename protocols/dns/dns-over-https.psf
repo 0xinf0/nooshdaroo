@@ -1,0 +1,52 @@
+# DNS-over-HTTPS Protocol Signature (RFC 8484)
+# DNS queries via HTTPS
+
+@SEGMENT.FORMATS
+
+DEFINE DohRequest
+  { NAME: method        ; TYPE: [u8; 4] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: path          ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: version       ; TYPE: [u8; 8] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] },
+  { NAME: dns_message   ; TYPE: [u8; variable] };
+
+DEFINE DohResponse
+  { NAME: version       ; TYPE: [u8; 8] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: status        ; TYPE: [u8; 3] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: reason        ; TYPE: [u8; variable] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] },
+  { NAME: dns_message   ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE DohRequest.method
+  SEMANTIC: HTTP_METHOD
+  VALUES: { GET: "GET ", POST: "POST" };
+
+DEFINE DohRequest.path
+  FIXED_VALUE: "/dns-query";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: DohRequest;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: DohResponse;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: HTTPS
+CIPHER: TLS_1_2_OR_HIGHER
+CONTENT_TYPE: "application/dns-message"
+DEFAULT_PORT: 443

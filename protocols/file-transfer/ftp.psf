@@ -1,0 +1,54 @@
+# FTP Protocol Signature (RFC 959)
+# File Transfer Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE FtpCommand
+  { NAME: command       ; TYPE: [u8; 4] },
+  { NAME: space         ; TYPE: u8 },
+  { NAME: arguments     ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] };
+
+DEFINE FtpResponse
+  { NAME: code          ; TYPE: [u8; 3] },
+  { NAME: separator     ; TYPE: u8 },
+  { NAME: text          ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE FtpCommand.command
+  SEMANTIC: COMMAND_TYPE
+  VALUES: { USER: "USER", PASS: "PASS", ACCT: "ACCT", CWD: "CWD ", CDUP: "CDUP",
+            SMNT: "SMNT", QUIT: "QUIT", REIN: "REIN", PORT: "PORT", PASV: "PASV",
+            TYPE: "TYPE", STRU: "STRU", MODE: "MODE", RETR: "RETR", STOR: "STOR",
+            STOU: "STOU", APPE: "APPE", ALLO: "ALLO", REST: "REST", RNFR: "RNFR",
+            RNTO: "RNTO", ABOR: "ABOR", DELE: "DELE", RMD: "RMD ", MKD: "MKD ",
+            PWD: "PWD ", LIST: "LIST", NLST: "NLST", SITE: "SITE", SYST: "SYST",
+            STAT: "STAT", HELP: "HELP", NOOP: "NOOP" };
+
+DEFINE FtpResponse.code
+  SEMANTIC: STATUS_CODE
+  VALUES: { READY: "220", USER_OK: "331", LOGIN_OK: "230", PASSIVE: "227", TRANSFER_OK: "226" };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: FtpCommand;  # USER
+    FORMAT: FtpCommand;  # PASS
+  PHASE: ACTIVE
+    FORMAT: FtpCommand;  # RETR/STOR
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: FtpResponse;
+  PHASE: ACTIVE
+    FORMAT: FtpResponse;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+CONTROL_PORT: 21
+DATA_PORT: 20
+TLS: FTPS

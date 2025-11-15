@@ -93,6 +93,33 @@ enum Commands {
         #[arg(short, long, default_value = "protocols")]
         dir: PathBuf,
     },
+
+    /// Generate Noise protocol keypair for encrypted transport
+    Genkey {
+        /// Save server config to file
+        #[arg(long)]
+        server_config: Option<PathBuf>,
+
+        /// Save client config to file
+        #[arg(long)]
+        client_config: Option<PathBuf>,
+
+        /// Server bind address
+        #[arg(long, default_value = "0.0.0.0:8443")]
+        server_bind: String,
+
+        /// Client bind address
+        #[arg(long, default_value = "127.0.0.1:1080")]
+        client_bind: String,
+
+        /// Server address (for client config)
+        #[arg(long, default_value = "myserver.com:8443")]
+        server_addr: String,
+
+        /// Noise pattern to use
+        #[arg(long, default_value = "nk")]
+        pattern: String,
+    },
 }
 
 #[tokio::main]
@@ -136,6 +163,23 @@ async fn main() -> Result<()> {
         }
         Commands::Protocols { dir } => {
             list_protocols(&dir)?;
+        }
+        Commands::Genkey {
+            server_config,
+            client_config,
+            server_bind,
+            client_bind,
+            server_addr,
+            pattern,
+        } => {
+            generate_keypair(
+                server_config,
+                client_config,
+                &server_bind,
+                &client_bind,
+                &server_addr,
+                &pattern,
+            )?;
         }
     }
 
@@ -281,6 +325,174 @@ fn list_protocols(dir: &PathBuf) -> Result<()> {
     }
 
     println!("Total: {} protocols", library.len());
+
+    Ok(())
+}
+
+fn generate_keypair(
+    server_config_path: Option<PathBuf>,
+    client_config_path: Option<PathBuf>,
+    server_bind: &str,
+    client_bind: &str,
+    server_addr: &str,
+    pattern: &str,
+) -> Result<()> {
+    use std::fs;
+    println!("\n╔════════════════════════════════════════════════════════════════════╗");
+    println!("║        Nooshdaroo Encrypted Transport Key Generator               ║");
+    println!("╚════════════════════════════════════════════════════════════════════╝\n");
+
+    println!("Generating X25519 keypair for Noise Protocol encryption...\n");
+
+    let keypair = nooshdaroo::generate_noise_keypair()
+        .context("Failed to generate keypair")?;
+
+    // Display keys with clear visual separation
+    println!("┌────────────────────────────────────────────────────────────────────┐");
+    println!("│ PRIVATE KEY (🔒 Keep this SECRET! Never share!)                    │");
+    println!("├────────────────────────────────────────────────────────────────────┤");
+    println!("│ {}  │", keypair.private_key_base64());
+    println!("└────────────────────────────────────────────────────────────────────┘");
+    println!();
+
+    println!("┌────────────────────────────────────────────────────────────────────┐");
+    println!("│ PUBLIC KEY (✅ Safe to share with peers)                           │");
+    println!("├────────────────────────────────────────────────────────────────────┤");
+    println!("│ {}  │", keypair.public_key_base64());
+    println!("└────────────────────────────────────────────────────────────────────┘");
+    println!();
+
+    // Configuration examples
+    println!("╔════════════════════════════════════════════════════════════════════╗");
+    println!("║                    CONFIGURATION EXAMPLES                          ║");
+    println!("╚════════════════════════════════════════════════════════════════════╝\n");
+
+    println!("📋 COPY THIS TO YOUR SERVER CONFIG (server.toml):");
+    println!("─────────────────────────────────────────────────────────────────────");
+    println!("[server]");
+    println!("bind = \"0.0.0.0:8443\"");
+    println!();
+    println!("[transport]");
+    println!("pattern = \"nk\"              # Server authentication (recommended)");
+    println!("local_private_key = \"{}\"", keypair.private_key_base64());
+    println!("─────────────────────────────────────────────────────────────────────\n");
+
+    println!("📋 COPY THIS TO YOUR CLIENT CONFIG (client.toml):");
+    println!("─────────────────────────────────────────────────────────────────────");
+    println!("[client]");
+    println!("bind_address = \"127.0.0.1:1080\"");
+    println!("server_address = \"myserver.com:8443\"");
+    println!();
+    println!("[transport]");
+    println!("pattern = \"nk\"              # Must match server pattern");
+    println!("remote_public_key = \"{}\"", keypair.public_key_base64());
+    println!("─────────────────────────────────────────────────────────────────────\n");
+
+    println!("💡 AVAILABLE PATTERNS:");
+    println!("  • nk  - Server authentication (recommended for most users)");
+    println!("  • xx  - Anonymous encryption (no authentication)");
+    println!("  • kk  - Mutual authentication (both sides verify)");
+    println!();
+
+    println!("📖 For more information:");
+    println!("  • Read NOISE_TRANSPORT.md");
+    println!("  • Check examples/ directory for sample configs");
+    println!();
+
+    println!("🔒 SECURITY REMINDER:");
+    println!("  ⚠️  NEVER commit private keys to version control!");
+    println!("  ⚠️  Store private keys with permissions 600 (chmod 600 server.toml)");
+    println!("  ⚠️  Use different keys for dev/staging/production");
+    println!("  ✅  Rotate keys every 90 days for best security");
+    println!();
+
+    // Save to files if requested
+    if let Some(ref path) = server_config_path {
+        let server_config = format!(
+            r#"# Nooshdaroo Server Configuration with Encrypted Transport
+# Generated: {}
+
+[server]
+bind = "{}"
+
+[transport]
+pattern = "{}"              # Noise protocol pattern
+local_private_key = "{}"   # 🔒 KEEP SECRET!
+
+# Optional: Protocol shape-shifting
+[shapeshift]
+strategy = "adaptive"
+initial_protocol = "https"
+"#,
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+            server_bind,
+            pattern,
+            keypair.private_key_base64()
+        );
+
+        fs::write(path, server_config)
+            .with_context(|| format!("Failed to write server config to {:?}", path))?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(path)?.permissions();
+            perms.set_mode(0o600);
+            fs::set_permissions(path, perms)?;
+        }
+
+        println!("✅ Server config saved to: {:?}", path);
+        println!("   (permissions set to 600 for security)\n");
+    }
+
+    if let Some(ref path) = client_config_path {
+        let client_config = format!(
+            r#"# Nooshdaroo Client Configuration with Encrypted Transport
+# Generated: {}
+
+[client]
+bind_address = "{}"
+server_address = "{}"
+proxy_type = "socks5"
+
+[transport]
+pattern = "{}"                  # Noise protocol pattern (must match server)
+remote_public_key = "{}"       # Server's public key
+
+# Optional: Application profile
+[traffic]
+application_profile = "zoom"
+enabled = true
+
+# Optional: Adaptive bandwidth
+[bandwidth]
+adaptive_quality = true
+initial_quality = "high"
+"#,
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+            client_bind,
+            server_addr,
+            pattern,
+            keypair.public_key_base64()
+        );
+
+        fs::write(path, client_config)
+            .with_context(|| format!("Failed to write client config to {:?}", path))?;
+
+        println!("✅ Client config saved to: {:?}", path);
+        println!();
+    }
+
+    if server_config_path.is_some() || client_config_path.is_some() {
+        println!("🚀 QUICK START:");
+        if let Some(ref path) = server_config_path {
+            println!("   Server: nooshdaroo server --config {:?}", path);
+        }
+        if let Some(ref path) = client_config_path {
+            println!("   Client: nooshdaroo client --config {:?}", path);
+        }
+        println!();
+    }
 
     Ok(())
 }

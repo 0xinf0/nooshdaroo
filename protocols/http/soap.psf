@@ -1,0 +1,41 @@
+# SOAP Protocol Signature
+# Simple Object Access Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE SoapRequest
+  { NAME: method        ; TYPE: [u8; 4] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: path          ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: version       ; TYPE: [u8; 8] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] },
+  { NAME: xml_envelope  ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE SoapRequest.method
+  FIXED_VALUE: "POST";
+
+DEFINE SoapRequest.xml_envelope
+  SEMANTIC: SOAP_ENVELOPE
+  CONTAINS: "<soap:Envelope";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: SoapRequest;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: SoapRequest;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: HTTP
+TLS: OPTIONAL
+DEFAULT_PORT: 80
+SECURE_PORT: 443

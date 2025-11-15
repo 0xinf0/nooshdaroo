@@ -1,0 +1,53 @@
+# Rsync Protocol Signature
+# Remote file synchronization
+
+@SEGMENT.FORMATS
+
+DEFINE RsyncHandshake
+  { NAME: magic         ; TYPE: [u8; 8] },
+  { NAME: version       ; TYPE: u8 },
+  { NAME: flags         ; TYPE: u8 };
+
+DEFINE RsyncFileList
+  { NAME: flags         ; TYPE: u8 },
+  { NAME: length        ; TYPE: u32 },
+  { NAME: filename      ; TYPE: [u8; length] },
+  { NAME: modtime       ; TYPE: u64 },
+  { NAME: mode          ; TYPE: u32 },
+  { NAME: uid           ; TYPE: u32 },
+  { NAME: gid           ; TYPE: u32 };
+
+DEFINE RsyncData
+  { NAME: block_index   ; TYPE: u32 },
+  { NAME: checksum      ; TYPE: u32 },
+  { NAME: data          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE RsyncHandshake.magic
+  FIXED_VALUE: "@RSYNCD:";
+
+DEFINE RsyncHandshake.version
+  SEMANTIC: PROTOCOL_VERSION
+  VALUES: { V30: 30, V31: 31 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: RsyncHandshake;
+  PHASE: ACTIVE
+    FORMAT: RsyncFileList;
+    FORMAT: RsyncData;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: RsyncHandshake;
+  PHASE: ACTIVE
+    FORMAT: RsyncData;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+SSH_TUNNEL: OPTIONAL
+DEFAULT_PORT: 873

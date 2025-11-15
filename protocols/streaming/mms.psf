@@ -1,0 +1,41 @@
+# MMS Protocol Signature
+# Microsoft Media Server protocol
+
+@SEGMENT.FORMATS
+
+DEFINE MmsHandshake
+  { NAME: signature     ; TYPE: [u8; 4] },
+  { NAME: version       ; TYPE: u32 },
+  { NAME: length        ; TYPE: u32 },
+  { NAME: command       ; TYPE: u16 };
+
+DEFINE MmsPacket
+  { NAME: signature     ; TYPE: [u8; 4] },
+  { NAME: length        ; TYPE: u32 },
+  { NAME: sequence      ; TYPE: u32 },
+  { NAME: timestamp     ; TYPE: u32 },
+  { NAME: data          ; TYPE: [u8; length - 12] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE MmsHandshake.signature
+  FIXED_VALUE: "\xCE\xFA\x0B\xB0";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: MmsHandshake;
+  PHASE: ACTIVE
+    FORMAT: MmsPacket;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: MmsHandshake;
+  PHASE: ACTIVE
+    FORMAT: MmsPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+DEFAULT_PORT: 1755

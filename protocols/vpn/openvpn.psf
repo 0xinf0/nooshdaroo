@@ -1,0 +1,55 @@
+# OpenVPN Protocol Signature
+# Open-source VPN solution
+
+@SEGMENT.FORMATS
+
+DEFINE OpenvpnPacket
+  { NAME: opcode        ; TYPE: u5 },
+  { NAME: key_id        ; TYPE: u3 },
+  { NAME: session_id    ; TYPE: [u8; 8] },
+  { NAME: packet_id     ; TYPE: u32 },
+  { NAME: payload       ; TYPE: [u8; variable] };
+
+DEFINE OpenvpnControlPacket
+  { NAME: opcode        ; TYPE: u5 },
+  { NAME: key_id        ; TYPE: u3 },
+  { NAME: session_id    ; TYPE: [u8; 8] },
+  { NAME: hmac          ; TYPE: [u8; 20] },
+  { NAME: packet_id     ; TYPE: u32 },
+  { NAME: message       ; TYPE: [u8; variable] };
+
+DEFINE OpenvpnDataPacket
+  { NAME: opcode        ; TYPE: u5 },
+  { NAME: key_id        ; TYPE: u3 },
+  { NAME: peer_id       ; TYPE: u24 },
+  { NAME: data          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE OpenvpnPacket.opcode
+  SEMANTIC: PACKET_TYPE
+  VALUES: { CONTROL_HARD_RESET_CLIENT: 1, CONTROL_HARD_RESET_SERVER: 2,
+            CONTROL_SOFT_RESET: 3, CONTROL_V1: 4, ACK_V1: 5,
+            DATA_V1: 6, DATA_V2: 9 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: OpenvpnControlPacket;
+  PHASE: ACTIVE
+    FORMAT: OpenvpnDataPacket;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: OpenvpnControlPacket;
+  PHASE: ACTIVE
+    FORMAT: OpenvpnDataPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+FALLBACK: TCP
+CIPHER: AES_256_GCM
+AUTH: SHA256
+DEFAULT_PORT: 1194

@@ -1,0 +1,45 @@
+# Zigbee Protocol Signature (IEEE 802.15.4)
+# Low-power wireless IoT protocol
+
+@SEGMENT.FORMATS
+
+DEFINE ZigbeeFrame
+  { NAME: frame_control ; TYPE: u16 },
+  { NAME: sequence      ; TYPE: u8 },
+  { NAME: dest_pan      ; TYPE: u16 },
+  { NAME: dest_addr     ; TYPE: u16 },
+  { NAME: src_addr      ; TYPE: u16 },
+  { NAME: payload       ; TYPE: [u8; variable] },
+  { NAME: fcs           ; TYPE: u16 };
+
+DEFINE ZigbeeNwk
+  { NAME: frame_control ; TYPE: u16 },
+  { NAME: dest_addr     ; TYPE: u16 },
+  { NAME: src_addr      ; TYPE: u16 },
+  { NAME: radius        ; TYPE: u8 },
+  { NAME: sequence      ; TYPE: u8 },
+  { NAME: payload       ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE ZigbeeFrame.frame_control
+  SEMANTIC: FRAME_TYPE
+  BIT: { TYPE: 0-2, SECURITY: 3, PENDING: 4, ACK_REQ: 5 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: ZigbeeFrame;
+    FORMAT: ZigbeeNwk;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: ZigbeeFrame;
+    FORMAT: ZigbeeNwk;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: IEEE_802_15_4
+CIPHER: AES_128_CCM
+FREQUENCY: 2.4GHz

@@ -1,0 +1,51 @@
+# OSPF Protocol Signature (RFC 2328)
+# Open Shortest Path First
+
+@SEGMENT.FORMATS
+
+DEFINE OspfHeader
+  { NAME: version       ; TYPE: u8 },
+  { NAME: type          ; TYPE: u8 },
+  { NAME: packet_length ; TYPE: u16 },
+  { NAME: router_id     ; TYPE: u32 },
+  { NAME: area_id       ; TYPE: u32 },
+  { NAME: checksum      ; TYPE: u16 },
+  { NAME: auth_type     ; TYPE: u16 },
+  { NAME: authentication; TYPE: [u8; 8] };
+
+DEFINE OspfHello
+  { NAME: header        ; TYPE: OspfHeader },
+  { NAME: network_mask  ; TYPE: u32 },
+  { NAME: hello_interval; TYPE: u16 },
+  { NAME: options       ; TYPE: u8 },
+  { NAME: priority      ; TYPE: u8 },
+  { NAME: dead_interval ; TYPE: u32 },
+  { NAME: designated_router ; TYPE: u32 },
+  { NAME: backup_router ; TYPE: u32 },
+  { NAME: neighbors     ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE OspfHeader.version
+  FIXED_VALUE: 2;
+
+DEFINE OspfHeader.type
+  SEMANTIC: PACKET_TYPE
+  VALUES: { HELLO: 1, DATABASE_DESCRIPTION: 2, LINK_STATE_REQUEST: 3,
+            LINK_STATE_UPDATE: 4, LINK_STATE_ACKNOWLEDGMENT: 5 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: OspfHello;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: OspfHello;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: IP
+PROTOCOL: 89
+AUTH: MD5_OPTIONAL

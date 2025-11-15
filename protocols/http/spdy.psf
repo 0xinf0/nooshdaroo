@@ -1,0 +1,52 @@
+# SPDY Protocol Signature (Google Protocol)
+# Predecessor to HTTP/2
+
+@SEGMENT.FORMATS
+
+DEFINE SpdyControlFrame
+  { NAME: control       ; TYPE: u1 },
+  { NAME: version       ; TYPE: u15 },
+  { NAME: type          ; TYPE: u16 },
+  { NAME: flags         ; TYPE: u8 },
+  { NAME: length        ; TYPE: u24 },
+  { NAME: data          ; TYPE: [u8; length] };
+
+DEFINE SpdyDataFrame
+  { NAME: control       ; TYPE: u1 },
+  { NAME: stream_id     ; TYPE: u31 },
+  { NAME: flags         ; TYPE: u8 },
+  { NAME: length        ; TYPE: u24 },
+  { NAME: data          ; TYPE: [u8; length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE SpdyControlFrame.control
+  FIXED_VALUE: 1;
+
+DEFINE SpdyDataFrame.control
+  FIXED_VALUE: 0;
+
+DEFINE SpdyControlFrame.type
+  SEMANTIC: FRAME_TYPE
+  VALUES: { SYN_STREAM: 1, SYN_REPLY: 2, RST_STREAM: 3, SETTINGS: 4, PING: 6, GOAWAY: 7, HEADERS: 8, WINDOW_UPDATE: 9 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: SpdyControlFrame;
+  PHASE: ACTIVE
+    FORMAT: SpdyDataFrame;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: SpdyControlFrame;
+  PHASE: ACTIVE
+    FORMAT: SpdyDataFrame;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TLS
+CIPHER: AES_128_GCM
+ALPN: "spdy/3.1"
+DEFAULT_PORT: 443

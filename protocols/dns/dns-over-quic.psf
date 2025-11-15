@@ -1,0 +1,45 @@
+# DNS-over-QUIC Protocol Signature (RFC 9250)
+# DNS queries via QUIC transport
+
+@SEGMENT.FORMATS
+
+DEFINE DoqMessage
+  { NAME: length        ; TYPE: u16 },
+  { NAME: dns_message   ; TYPE: [u8; length] };
+
+DEFINE QuicPacket
+  { NAME: header_form   ; TYPE: u1 },
+  { NAME: fixed_bit     ; TYPE: u1 },
+  { NAME: packet_type   ; TYPE: u2 },
+  { NAME: version       ; TYPE: u32 },
+  { NAME: payload       ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE QuicPacket.header_form
+  FIXED_VALUE: 1;
+
+DEFINE DoqMessage.length
+  LENGTH: DNS_MESSAGE;
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: QuicPacket;
+  PHASE: ACTIVE
+    FORMAT: DoqMessage;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: QuicPacket;
+  PHASE: ACTIVE
+    FORMAT: DoqMessage;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: QUIC
+CIPHER: AES_128_GCM
+TLS_VERSION: 1.3
+DEFAULT_PORT: 853
+ALPN: "doq"

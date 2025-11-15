@@ -1,0 +1,45 @@
+# SMTPS Protocol Signature (SMTP over TLS)
+# Secure Simple Mail Transfer Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE TlsHandshake
+  { NAME: content_type  ; TYPE: u8 },
+  { NAME: version       ; TYPE: u16 },
+  { NAME: length        ; TYPE: u16 },
+  { NAME: handshake_type; TYPE: u8 },
+  { NAME: handshake_len ; TYPE: u24 },
+  { NAME: payload       ; TYPE: [u8; handshake_len] };
+
+DEFINE SmtpsCommand
+  { NAME: encrypted     ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE TlsHandshake.content_type
+  FIXED_VALUE: 0x16;
+
+DEFINE TlsHandshake.handshake_type
+  SEMANTIC: HANDSHAKE_TYPE
+  VALUES: { CLIENT_HELLO: 1, SERVER_HELLO: 2, CERTIFICATE: 11, SERVER_KEY_EXCHANGE: 12 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: TlsHandshake;
+  PHASE: ACTIVE
+    FORMAT: SmtpsCommand;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: TlsHandshake;
+  PHASE: ACTIVE
+    FORMAT: SmtpsCommand;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+CIPHER: AES_256_GCM_SHA384
+TLS_VERSION: 1.2_OR_HIGHER
+DEFAULT_PORT: 465

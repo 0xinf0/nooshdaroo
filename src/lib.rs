@@ -65,12 +65,15 @@
 //!                     └──────────────┘
 //! ```
 
+pub mod app_profiles;
+pub mod bandwidth;
 pub mod config;
 pub mod json_logger;
 pub mod library;
 pub mod mobile;
 pub mod multiport_server;
 pub mod netflow_evasion;
+pub mod noise_transport;
 pub mod protocol;
 pub mod proxy;
 pub mod shapeshift;
@@ -80,9 +83,18 @@ pub mod traceroute;
 pub mod traffic;
 
 // Re-export core types
+pub use app_profiles::{ApplicationEmulator, ApplicationProfile, AppCategory};
+pub use bandwidth::{
+    AdaptiveRateLimiter, BandwidthController, NetworkMetrics, NetworkMonitor, QualityProfile,
+    QualityTier,
+};
 pub use config::{NooshdarooConfig, ShapeShiftConfig, TrafficShapingConfig};
 pub use library::ProtocolLibrary;
 pub use mobile::{MobileConfigBuilder, NooshdarooMobileConfig};
+pub use noise_transport::{
+    generate_keypair as generate_noise_keypair, NoiseConfig, NoiseKeypair, NoisePattern,
+    NoiseTransport,
+};
 pub use protocol::{DetectionScore, ProtocolId, ProtocolMeta, Transport};
 pub use proxy::{HttpProxyServer, ProxyType, UnifiedProxyListener};
 pub use shapeshift::ShapeShiftController;

@@ -1,0 +1,50 @@
+# InfluxDB Protocol Signature
+# Time series database
+
+@SEGMENT.FORMATS
+
+DEFINE InfluxdbLineProtocol
+  { NAME: measurement   ; TYPE: [u8; variable] },
+  { NAME: comma1        ; TYPE: u8 },
+  { NAME: tags          ; TYPE: [u8; variable] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: fields        ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: timestamp     ; TYPE: [u8; variable] },
+  { NAME: newline       ; TYPE: u8 };
+
+DEFINE InfluxdbHttpRequest
+  { NAME: method        ; TYPE: [u8; 4] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: path          ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: version       ; TYPE: [u8; 8] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] },
+  { NAME: data          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE InfluxdbHttpRequest.method
+  FIXED_VALUE: "POST";
+
+DEFINE InfluxdbHttpRequest.path
+  SEMANTIC: API_ENDPOINT
+  CONTAINS: "/write";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: InfluxdbHttpRequest;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: InfluxdbHttpRequest;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: HTTP
+TLS: OPTIONAL
+DEFAULT_PORT: 8086

@@ -1,0 +1,47 @@
+# SNMP Protocol Signature (RFC 1157)
+# Simple Network Management Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE SnmpMessage
+  { NAME: version       ; TYPE: u8 },
+  { NAME: community     ; TYPE: [u8; variable] },
+  { NAME: pdu_type      ; TYPE: u8 },
+  { NAME: request_id    ; TYPE: u32 },
+  { NAME: error_status  ; TYPE: u8 },
+  { NAME: error_index   ; TYPE: u8 },
+  { NAME: variable_bindings ; TYPE: [u8; variable] };
+
+DEFINE Snmpv3Message
+  { NAME: version       ; TYPE: u8 },
+  { NAME: header_data   ; TYPE: [u8; variable] },
+  { NAME: security_params ; TYPE: [u8; variable] },
+  { NAME: pdu           ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE SnmpMessage.version
+  SEMANTIC: SNMP_VERSION
+  VALUES: { V1: 0, V2C: 1, V3: 3 };
+
+DEFINE SnmpMessage.pdu_type
+  SEMANTIC: PDU_TYPE
+  VALUES: { GET_REQUEST: 0xA0, GET_NEXT_REQUEST: 0xA1, GET_RESPONSE: 0xA2,
+            SET_REQUEST: 0xA3, TRAP: 0xA4, GET_BULK_REQUEST: 0xA5, INFORM_REQUEST: 0xA6, TRAP_V2: 0xA7, REPORT: 0xA8 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: SnmpMessage;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: SnmpMessage;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+SNMPV3: USM_ENCRYPTION
+DEFAULT_PORT: 161
+TRAP_PORT: 162

@@ -1,0 +1,40 @@
+# Nooshdaroo Configuration - Microsoft Teams Emulation
+#
+# Mimics Teams video conferencing with gallery view support
+# and multimodal packet sizes.
+
+[client]
+bind_address = "127.0.0.1:1080"
+server_address = "example.com:8443"
+proxy_type = "socks5"
+
+[traffic]
+application_profile = "teams"
+enabled = true
+
+[bandwidth]
+adaptive_quality = true
+initial_quality = "high"
+auto_adapt = true
+
+[shapeshift]
+strategy = "adaptive"
+initial_protocol = "https"
+
+[traffic.advanced]
+enable_timing_emulation = true
+enable_size_padding = true
+
+# Teams uses multimodal packet sizes (audio, low-res, HD)
+packet_size_distribution = "multimodal"
+mean_packet_size = 1300
+stddev_packet_size = 200
+
+# Gallery view creates periodic bursts (9 participants in 3x3)
+enable_bursts = true
+burst_probability = 0.7
+burst_size = 9
+
+mean_delay = 22
+stddev_delay = 6
+jitter_ms = 12

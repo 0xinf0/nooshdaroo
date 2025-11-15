@@ -1,0 +1,41 @@
+# Tailscale Protocol Signature
+# Mesh VPN based on WireGuard
+
+@SEGMENT.FORMATS
+
+DEFINE TailscaleHandshake
+  { NAME: magic         ; TYPE: [u8; 8] },
+  { NAME: version       ; TYPE: u32 },
+  { NAME: node_key      ; TYPE: [u8; 32] };
+
+DEFINE TailscalePacket
+  { NAME: header        ; TYPE: u8 },
+  { NAME: receiver      ; TYPE: u32 },
+  { NAME: counter       ; TYPE: u64 },
+  { NAME: data          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE TailscaleHandshake.magic
+  FIXED_VALUE: "TAILSCALE";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: TailscaleHandshake;
+  PHASE: ACTIVE
+    FORMAT: TailscalePacket;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: TailscaleHandshake;
+  PHASE: ACTIVE
+    FORMAT: TailscalePacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+CIPHER: ChaCha20Poly1305
+KEY_EXCHANGE: Curve25519
+DEFAULT_PORT: 41641

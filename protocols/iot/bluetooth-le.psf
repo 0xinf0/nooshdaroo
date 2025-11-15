@@ -1,0 +1,51 @@
+# Bluetooth LE Protocol Signature
+# Low Energy Bluetooth protocol
+
+@SEGMENT.FORMATS
+
+DEFINE BleAdvPdu
+  { NAME: pdu_type      ; TYPE: u4 },
+  { NAME: tx_add        ; TYPE: u1 },
+  { NAME: rx_add        ; TYPE: u1 },
+  { NAME: length        ; TYPE: u6 },
+  { NAME: payload       ; TYPE: [u8; length] };
+
+DEFINE BleDataPdu
+  { NAME: llid          ; TYPE: u2 },
+  { NAME: nesn          ; TYPE: u1 },
+  { NAME: sn            ; TYPE: u1 },
+  { NAME: md            ; TYPE: u1 },
+  { NAME: length        ; TYPE: u5 },
+  { NAME: payload       ; TYPE: [u8; length] },
+  { NAME: mic           ; TYPE: [u8; 4] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE BleAdvPdu.pdu_type
+  SEMANTIC: PDU_TYPE
+  VALUES: { ADV_IND: 0, ADV_DIRECT_IND: 1, ADV_NONCONN_IND: 2, SCAN_REQ: 3,
+            SCAN_RSP: 4, CONNECT_REQ: 5, ADV_SCAN_IND: 6 };
+
+DEFINE BleDataPdu.llid
+  SEMANTIC: LOGICAL_LINK_ID
+  VALUES: { CONTINUATION: 1, START: 2, CONTROL: 3 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: BleAdvPdu;
+  PHASE: ACTIVE
+    FORMAT: BleDataPdu;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: BleAdvPdu;
+  PHASE: ACTIVE
+    FORMAT: BleDataPdu;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: WIRELESS
+CIPHER: AES_128_CCM
+FREQUENCY: 2.4GHz

@@ -1,0 +1,68 @@
+# HTTP/2 Protocol Signature (RFC 9113)
+# Modern binary framing protocol for HTTP
+
+@SEGMENT.FORMATS
+
+DEFINE Http2ConnectionPreface
+  { NAME: magic ; TYPE: [u8; 24] };
+
+DEFINE Http2FrameHeader
+  { NAME: length        ; TYPE: u24 },
+  { NAME: type          ; TYPE: u8 },
+  { NAME: flags         ; TYPE: u8 },
+  { NAME: reserved      ; TYPE: u1 },
+  { NAME: stream_id     ; TYPE: u31 };
+
+DEFINE Http2DataFrame
+  { NAME: header        ; TYPE: Http2FrameHeader },
+  { NAME: pad_length    ; TYPE: u8 },
+  { NAME: data          ; TYPE: [u8; header.length - pad_length - 1] },
+  { NAME: padding       ; TYPE: [u8; pad_length] };
+
+DEFINE Http2HeadersFrame
+  { NAME: header        ; TYPE: Http2FrameHeader },
+  { NAME: pad_length    ; TYPE: u8 },
+  { NAME: priority      ; TYPE: u5 },
+  { NAME: headers       ; TYPE: [u8; header.length - pad_length - 6] },
+  { NAME: padding       ; TYPE: [u8; pad_length] };
+
+DEFINE Http2SettingsFrame
+  { NAME: header        ; TYPE: Http2FrameHeader },
+  { NAME: settings      ; TYPE: [u8; header.length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE Http2ConnectionPreface.magic
+  FIXED_VALUE: "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+
+DEFINE Http2FrameHeader.type
+  SEMANTIC: FRAME_TYPE
+  VALUES: { DATA: 0x0, HEADERS: 0x1, PRIORITY: 0x2, RST_STREAM: 0x3, SETTINGS: 0x4,
+            PUSH_PROMISE: 0x5, PING: 0x6, GOAWAY: 0x7, WINDOW_UPDATE: 0x8, CONTINUATION: 0x9 };
+
+DEFINE Http2FrameHeader.length
+  LENGTH: FRAME_PAYLOAD;
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: Http2ConnectionPreface;
+  PHASE: ACTIVE
+    FORMAT: Http2SettingsFrame;
+    FORMAT: Http2HeadersFrame;
+    FORMAT: Http2DataFrame;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: Http2SettingsFrame;
+  PHASE: ACTIVE
+    FORMAT: Http2HeadersFrame;
+    FORMAT: Http2DataFrame;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TLS_1_2_OR_HIGHER
+CIPHER: ECDHE_RSA_WITH_AES_128_GCM_SHA256
+ALPN: "h2"
+DEFAULT_PORT: 443

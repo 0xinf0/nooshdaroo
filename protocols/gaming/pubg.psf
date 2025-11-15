@@ -1,0 +1,34 @@
+# PUBG Protocol Signature
+# PlayerUnknown's Battlegrounds network protocol
+
+@SEGMENT.FORMATS
+
+DEFINE PubgPacket
+  { NAME: magic         ; TYPE: u16 },
+  { NAME: sequence      ; TYPE: u32 },
+  { NAME: ack           ; TYPE: u32 },
+  { NAME: flags         ; TYPE: u8 },
+  { NAME: channel       ; TYPE: u8 },
+  { NAME: length        ; TYPE: u16 },
+  { NAME: data          ; TYPE: [u8; length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE PubgPacket.magic
+  FIXED_VALUE: 0xABAB;
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: PubgPacket;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: PubgPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+ENCRYPTION: PROPRIETARY
+DEFAULT_PORT: 7777

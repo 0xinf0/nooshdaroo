@@ -1,0 +1,35 @@
+# CS:GO Protocol Signature
+# Counter-Strike: Global Offensive network protocol
+
+@SEGMENT.FORMATS
+
+DEFINE CsgoPacket
+  { NAME: sequence      ; TYPE: u32 },
+  { NAME: ack           ; TYPE: u32 },
+  { NAME: flags         ; TYPE: u8 },
+  { NAME: checksum      ; TYPE: u16 },
+  { NAME: reliable_state; TYPE: u8 },
+  { NAME: choked        ; TYPE: u8 },
+  { NAME: data          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE CsgoPacket.flags
+  SEMANTIC: PACKET_FLAGS
+  BIT: { RELIABLE: 0, COMPRESSED: 1, ENCRYPTED: 2, SPLIT: 3 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: CsgoPacket;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: CsgoPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+ENCRYPTION: SOURCE_ENGINE
+DEFAULT_PORT: 27015

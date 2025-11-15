@@ -1,0 +1,69 @@
+# Redis Protocol Signature (RESP)
+# Redis Serialization Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE RedisSimpleString
+  { NAME: type          ; TYPE: u8 },
+  { NAME: data          ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] };
+
+DEFINE RedisError
+  { NAME: type          ; TYPE: u8 },
+  { NAME: message       ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] };
+
+DEFINE RedisInteger
+  { NAME: type          ; TYPE: u8 },
+  { NAME: number        ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] };
+
+DEFINE RedisBulkString
+  { NAME: type          ; TYPE: u8 },
+  { NAME: length        ; TYPE: [u8; variable] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: data          ; TYPE: [u8; length.value] },
+  { NAME: crlf2         ; TYPE: [u8; 2] };
+
+DEFINE RedisArray
+  { NAME: type          ; TYPE: u8 },
+  { NAME: count         ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] },
+  { NAME: elements      ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE RedisSimpleString.type
+  FIXED_VALUE: '+';
+
+DEFINE RedisError.type
+  FIXED_VALUE: '-';
+
+DEFINE RedisInteger.type
+  FIXED_VALUE: ':';
+
+DEFINE RedisBulkString.type
+  FIXED_VALUE: '$';
+
+DEFINE RedisArray.type
+  FIXED_VALUE: '*';
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: RedisArray;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: RedisSimpleString;
+    FORMAT: RedisError;
+    FORMAT: RedisInteger;
+    FORMAT: RedisBulkString;
+    FORMAT: RedisArray;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+TLS: OPTIONAL
+DEFAULT_PORT: 6379

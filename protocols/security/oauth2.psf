@@ -1,0 +1,39 @@
+# OAuth 2.0 Protocol Signature (RFC 6749)
+# Authorization framework
+
+@SEGMENT.FORMATS
+
+DEFINE OAuth2Request
+  { NAME: method        ; TYPE: [u8; 4] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: path          ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: version       ; TYPE: [u8; 8] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] },
+  { NAME: body          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE OAuth2Request.method
+  FIXED_VALUE: "POST";
+
+DEFINE OAuth2Request.path
+  SEMANTIC: ENDPOINT_TYPE
+  VALUES: { AUTHORIZE: "/authorize", TOKEN: "/token", REVOKE: "/revoke" };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: OAuth2Request;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: OAuth2Request;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: HTTPS
+DEFAULT_PORT: 443

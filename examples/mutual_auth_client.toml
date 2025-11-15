@@ -1,0 +1,14 @@
+# Nooshdaroo Client with Mutual Authentication (KK Pattern)
+#
+# This configuration proves client identity to the server.
+# Requires pre-shared public keys on both sides.
+
+[client]
+bind_address = "127.0.0.1:1080"
+server_address = "myserver.com:8443"
+proxy_type = "socks5"
+
+[transport]
+pattern = "kk"  # Mutual authentication
+local_private_key = "CLIENT_PRIVATE_KEY_HERE"
+remote_public_key = "SERVER_PUBLIC_KEY_HERE"

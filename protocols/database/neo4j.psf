@@ -1,0 +1,45 @@
+# Neo4j Bolt Protocol Signature
+# Graph database wire protocol
+
+@SEGMENT.FORMATS
+
+DEFINE BoltHandshake
+  { NAME: magic         ; TYPE: u32 },
+  { NAME: version1      ; TYPE: u32 },
+  { NAME: version2      ; TYPE: u32 },
+  { NAME: version3      ; TYPE: u32 },
+  { NAME: version4      ; TYPE: u32 };
+
+DEFINE BoltMessage
+  { NAME: marker        ; TYPE: u8 },
+  { NAME: signature     ; TYPE: u8 },
+  { NAME: fields        ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE BoltHandshake.magic
+  FIXED_VALUE: 0x6060B017;
+
+DEFINE BoltMessage.signature
+  SEMANTIC: MESSAGE_TYPE
+  VALUES: { INIT: 0x01, RUN: 0x10, DISCARD: 0x2F, PULL: 0x3F, RESET: 0x0F, SUCCESS: 0x70, RECORD: 0x71, IGNORED: 0x7E, FAILURE: 0x7F };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: BoltHandshake;
+  PHASE: ACTIVE
+    FORMAT: BoltMessage;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: BoltHandshake;
+  PHASE: ACTIVE
+    FORMAT: BoltMessage;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+TLS: OPTIONAL
+DEFAULT_PORT: 7687

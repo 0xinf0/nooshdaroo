@@ -11,6 +11,8 @@
 //! - Protocol shape-shifting with 5 strategies
 //! - Traffic shaping and timing emulation
 
+pub mod app_profiles;
+pub mod bandwidth;
 pub mod config;
 pub mod library;
 pub mod mobile;
@@ -21,6 +23,10 @@ pub mod socat;
 pub mod strategy;
 pub mod traffic;
 
+pub use app_profiles::{ApplicationEmulator, ApplicationProfile, AppCategory, QualityTier};
+pub use bandwidth::{
+    AdaptiveRateLimiter, BandwidthController, NetworkMetrics, NetworkMonitor, QualityProfile,
+};
 pub use config::{NooshdarooConfig, ShapeShiftConfig, TrafficShapingConfig};
 pub use library::ProtocolLibrary;
 pub use mobile::{MobileConfigBuilder, NooshdarooMobileConfig};

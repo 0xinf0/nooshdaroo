@@ -1,0 +1,38 @@
+# Thread Protocol Signature
+# IPv6-based mesh networking for IoT
+
+@SEGMENT.FORMATS
+
+DEFINE ThreadMle
+  { NAME: security_suite; TYPE: u8 },
+  { NAME: aux_header    ; TYPE: u8 },
+  { NAME: frame_counter ; TYPE: u32 },
+  { NAME: key_source    ; TYPE: [u8; 8] },
+  { NAME: key_index     ; TYPE: u8 },
+  { NAME: command       ; TYPE: u8 },
+  { NAME: tlvs          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE ThreadMle.command
+  SEMANTIC: MLE_COMMAND
+  VALUES: { LINK_REQUEST: 0, LINK_ACCEPT: 1, LINK_ACCEPT_AND_REQUEST: 2,
+            LINK_REJECT: 3, ADVERTISEMENT: 4, UPDATE: 5, UPDATE_REQUEST: 6,
+            DATA_REQUEST: 7, DATA_RESPONSE: 8, PARENT_REQUEST: 9, PARENT_RESPONSE: 10,
+            CHILD_ID_REQUEST: 11, CHILD_ID_RESPONSE: 12, CHILD_UPDATE_REQUEST: 13, CHILD_UPDATE_RESPONSE: 14 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: ThreadMle;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: ThreadMle;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: IEEE_802_15_4
+CIPHER: AES_128_CCM
+FREQUENCY: 2.4GHz

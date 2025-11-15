@@ -1,0 +1,66 @@
+# POP3 Protocol Signature (RFC 1939)
+# Post Office Protocol version 3
+
+@SEGMENT.FORMATS
+
+DEFINE Pop3Command
+  { NAME: command       ; TYPE: [u8; 4] },
+  { NAME: space         ; TYPE: u8 },
+  { NAME: arguments     ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] };
+
+DEFINE Pop3Response
+  { NAME: status        ; TYPE: [u8; variable] },
+  { NAME: space         ; TYPE: u8 },
+  { NAME: text          ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] };
+
+DEFINE Pop3MultilineResponse
+  { NAME: status        ; TYPE: [u8; variable] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: data          ; TYPE: [u8; variable] },
+  { NAME: terminator    ; TYPE: [u8; 5] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE Pop3Command.command
+  SEMANTIC: COMMAND_TYPE
+  VALUES: { USER: "USER", PASS: "PASS", STAT: "STAT", LIST: "LIST", RETR: "RETR",
+            DELE: "DELE", NOOP: "NOOP", RSET: "RSET", QUIT: "QUIT", TOP: "TOP ", UIDL: "UIDL" };
+
+DEFINE Pop3Response.status
+  SEMANTIC: STATUS_TYPE
+  VALUES: { OK: "+OK", ERR: "-ERR" };
+
+DEFINE Pop3MultilineResponse.terminator
+  FIXED_VALUE: "\r\n.\r\n";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: Pop3Command;  # USER
+    FORMAT: Pop3Command;  # PASS
+  PHASE: ACTIVE
+    FORMAT: Pop3Command;  # STAT
+    FORMAT: Pop3Command;  # LIST
+    FORMAT: Pop3Command;  # RETR
+  PHASE: TEARDOWN
+    FORMAT: Pop3Command;  # QUIT
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: Pop3Response;
+  PHASE: ACTIVE
+    FORMAT: Pop3Response;
+    FORMAT: Pop3MultilineResponse;
+  PHASE: TEARDOWN
+    FORMAT: Pop3Response;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+STARTTLS: OPTIONAL
+CIPHER: TLS_1_2_OR_HIGHER
+DEFAULT_PORT: 110
+SECURE_PORT: 995

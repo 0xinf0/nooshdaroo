@@ -1,0 +1,39 @@
+# OCF Protocol Signature
+# Open Connectivity Foundation IoT protocol
+
+@SEGMENT.FORMATS
+
+DEFINE OcfRequest
+  { NAME: version       ; TYPE: u2 },
+  { NAME: type          ; TYPE: u2 },
+  { NAME: token_length  ; TYPE: u4 },
+  { NAME: code          ; TYPE: u8 },
+  { NAME: message_id    ; TYPE: u16 },
+  { NAME: token         ; TYPE: [u8; token_length] },
+  { NAME: options       ; TYPE: [u8; variable] },
+  { NAME: payload       ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE OcfRequest.version
+  FIXED_VALUE: 1;
+
+DEFINE OcfRequest.code
+  SEMANTIC: REQUEST_CODE
+  VALUES: { GET: 1, POST: 2, PUT: 3, DELETE: 4 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: OcfRequest;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: OcfRequest;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+DTLS: REQUIRED
+DEFAULT_PORT: 5684

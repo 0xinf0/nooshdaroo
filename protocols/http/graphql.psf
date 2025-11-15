@@ -1,0 +1,39 @@
+# GraphQL over HTTP Protocol Signature
+# Query language for APIs
+
+@SEGMENT.FORMATS
+
+DEFINE GraphqlRequest
+  { NAME: method        ; TYPE: [u8; 4] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: path          ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: version       ; TYPE: [u8; 8] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] },
+  { NAME: json_body     ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE GraphqlRequest.method
+  FIXED_VALUE: "POST";
+
+DEFINE GraphqlRequest.path
+  SEMANTIC: GRAPHQL_ENDPOINT
+  CONTAINS: "/graphql";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: GraphqlRequest;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: GraphqlRequest;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: HTTPS
+DEFAULT_PORT: 443

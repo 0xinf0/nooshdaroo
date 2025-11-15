@@ -1,0 +1,43 @@
+# Icecast Protocol Signature
+# Streaming media server protocol
+
+@SEGMENT.FORMATS
+
+DEFINE IcecastRequest
+  { NAME: method        ; TYPE: [u8; variable] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: path          ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: version       ; TYPE: [u8; 8] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] };
+
+DEFINE IcecastMetadata
+  { NAME: metadata_len  ; TYPE: u8 },
+  { NAME: metadata      ; TYPE: [u8; metadata_len * 16] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE IcecastRequest.method
+  SEMANTIC: HTTP_METHOD
+  VALUES: { GET: "GET", SOURCE: "SOURCE" };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: IcecastRequest;
+  PHASE: ACTIVE
+    FORMAT: IcecastMetadata;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: IcecastRequest;
+  PHASE: ACTIVE
+    FORMAT: IcecastMetadata;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: HTTP
+DEFAULT_PORT: 8000

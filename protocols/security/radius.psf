@@ -1,0 +1,40 @@
+# RADIUS Protocol Signature (RFC 2865)
+# Remote Authentication Dial-In User Service
+
+@SEGMENT.FORMATS
+
+DEFINE RadiusPacket
+  { NAME: code          ; TYPE: u8 },
+  { NAME: identifier    ; TYPE: u8 },
+  { NAME: length        ; TYPE: u16 },
+  { NAME: authenticator ; TYPE: [u8; 16] },
+  { NAME: attributes    ; TYPE: [u8; length - 20] };
+
+DEFINE RadiusAttribute
+  { NAME: type          ; TYPE: u8 },
+  { NAME: length        ; TYPE: u8 },
+  { NAME: value         ; TYPE: [u8; length - 2] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE RadiusPacket.code
+  SEMANTIC: PACKET_TYPE
+  VALUES: { ACCESS_REQUEST: 1, ACCESS_ACCEPT: 2, ACCESS_REJECT: 3, ACCOUNTING_REQUEST: 4,
+            ACCOUNTING_RESPONSE: 5, ACCESS_CHALLENGE: 11, STATUS_SERVER: 12, STATUS_CLIENT: 13 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: RadiusPacket;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: RadiusPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+SHARED_SECRET: REQUIRED
+DEFAULT_PORT: 1812
+ACCOUNTING_PORT: 1813

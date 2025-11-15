@@ -56,6 +56,10 @@ libc = "0.2"
 # CLI parsing
 clap = { version = "4.5", features = ["derive", "env", "cargo"] }
 
+# Noise Protocol for encrypted transport
+snow = "0.9"
+base64 = "0.22"
+
 [dev-dependencies]
 tokio-test = "0.4"
 criterion = "0.5"

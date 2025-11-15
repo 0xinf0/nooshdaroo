@@ -1,0 +1,57 @@
+# Matrix Protocol Signature
+# Matrix federation and client-server protocol
+
+@SEGMENT.FORMATS
+
+DEFINE MatrixRequest
+  { NAME: method        ; TYPE: [u8; variable] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: path          ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: version       ; TYPE: [u8; 8] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] },
+  { NAME: json_body     ; TYPE: [u8; variable] };
+
+DEFINE MatrixResponse
+  { NAME: version       ; TYPE: [u8; 8] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: status        ; TYPE: [u8; 3] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: reason        ; TYPE: [u8; variable] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] },
+  { NAME: json_body     ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE MatrixRequest.method
+  SEMANTIC: HTTP_METHOD
+  VALUES: { GET: "GET", POST: "POST", PUT: "PUT", DELETE: "DELETE" };
+
+DEFINE MatrixRequest.path
+  SEMANTIC: API_ENDPOINT
+  PREFIX: "/_matrix/";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: MatrixRequest;
+  PHASE: ACTIVE
+    FORMAT: MatrixRequest;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: MatrixResponse;
+  PHASE: ACTIVE
+    FORMAT: MatrixResponse;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: HTTPS
+CIPHER: TLS_1_2_OR_HIGHER
+DEFAULT_PORT: 8448
+CLIENT_PORT: 443

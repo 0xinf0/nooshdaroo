@@ -1,0 +1,53 @@
+# XMPP Protocol Signature (RFC 6120)
+# Extensible Messaging and Presence Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE XmppStreamOpen
+  { NAME: xml_header    ; TYPE: [u8; variable] },
+  { NAME: stream_open   ; TYPE: [u8; variable] };
+
+DEFINE XmppStanza
+  { NAME: stanza        ; TYPE: [u8; variable] };
+
+DEFINE XmppMessage
+  { NAME: message_open  ; TYPE: [u8; variable] },
+  { NAME: body          ; TYPE: [u8; variable] },
+  { NAME: message_close ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE XmppStreamOpen.xml_header
+  FIXED_VALUE: "<?xml version='1.0'?>";
+
+DEFINE XmppStreamOpen.stream_open
+  SEMANTIC: STREAM_NAMESPACE
+  CONTAINS: "xmlns='jabber:client'";
+
+DEFINE XmppStanza.stanza
+  SEMANTIC: STANZA_TYPE
+  VALUES: { MESSAGE: "<message", PRESENCE: "<presence", IQ: "<iq" };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: XmppStreamOpen;
+  PHASE: ACTIVE
+    FORMAT: XmppMessage;
+    FORMAT: XmppStanza;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: XmppStreamOpen;
+  PHASE: ACTIVE
+    FORMAT: XmppMessage;
+    FORMAT: XmppStanza;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+STARTTLS: REQUIRED
+SASL: REQUIRED
+DEFAULT_PORT: 5222
+SERVER_PORT: 5269

@@ -1,0 +1,44 @@
+# Modbus Protocol Signature
+# Industrial automation protocol
+
+@SEGMENT.FORMATS
+
+DEFINE ModbusTcp
+  { NAME: transaction   ; TYPE: u16 },
+  { NAME: protocol      ; TYPE: u16 },
+  { NAME: length        ; TYPE: u16 },
+  { NAME: unit_id       ; TYPE: u8 },
+  { NAME: function_code ; TYPE: u8 },
+  { NAME: data          ; TYPE: [u8; length - 2] };
+
+DEFINE ModbusRtu
+  { NAME: slave_addr    ; TYPE: u8 },
+  { NAME: function_code ; TYPE: u8 },
+  { NAME: data          ; TYPE: [u8; variable] },
+  { NAME: crc           ; TYPE: u16 };
+
+@SEGMENT.SEMANTICS
+
+DEFINE ModbusTcp.protocol
+  FIXED_VALUE: 0;
+
+DEFINE ModbusTcp.function_code
+  SEMANTIC: FUNCTION_CODE
+  VALUES: { READ_COILS: 1, READ_DISCRETE: 2, READ_HOLDING: 3, READ_INPUT: 4,
+            WRITE_COIL: 5, WRITE_REGISTER: 6, WRITE_COILS: 15, WRITE_REGISTERS: 16 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: ModbusTcp;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: ModbusTcp;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+DEFAULT_PORT: 502
+RTU_TRANSPORT: SERIAL

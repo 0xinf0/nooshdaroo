@@ -1,0 +1,43 @@
+# Z-Wave Protocol Signature
+# Home automation wireless protocol
+
+@SEGMENT.FORMATS
+
+DEFINE ZwaveFrame
+  { NAME: home_id       ; TYPE: u32 },
+  { NAME: source_node   ; TYPE: u8 },
+  { NAME: frame_control ; TYPE: u8 },
+  { NAME: length        ; TYPE: u8 },
+  { NAME: dest_node     ; TYPE: u8 },
+  { NAME: command_class ; TYPE: u8 },
+  { NAME: command       ; TYPE: u8 },
+  { NAME: payload       ; TYPE: [u8; length - 4] },
+  { NAME: checksum      ; TYPE: u8 };
+
+@SEGMENT.SEMANTICS
+
+DEFINE ZwaveFrame.frame_control
+  SEMANTIC: FRAME_TYPE
+  BIT: { HEADER_TYPE: 0-1, SPEED: 2-3, LOW_POWER: 4, ACK_REQ: 5, ROUTED: 6, BEAM: 7 };
+
+DEFINE ZwaveFrame.command_class
+  SEMANTIC: COMMAND_CLASS
+  VALUES: { BASIC: 0x20, SWITCH_BINARY: 0x25, SWITCH_MULTILEVEL: 0x26,
+            SENSOR_BINARY: 0x30, SENSOR_MULTILEVEL: 0x31, METER: 0x32,
+            THERMOSTAT_MODE: 0x40, BATTERY: 0x80, WAKE_UP: 0x84 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: ZwaveFrame;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: ZwaveFrame;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: WIRELESS
+CIPHER: AES_128
+FREQUENCY: 908MHz

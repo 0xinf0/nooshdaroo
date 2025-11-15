@@ -1,0 +1,33 @@
+# Overwatch Protocol Signature
+# Blizzard's Overwatch network protocol
+
+@SEGMENT.FORMATS
+
+DEFINE OverwatchPacket
+  { NAME: magic         ; TYPE: [u8; 4] },
+  { NAME: session_id    ; TYPE: u32 },
+  { NAME: sequence      ; TYPE: u32 },
+  { NAME: timestamp     ; TYPE: u32 },
+  { NAME: length        ; TYPE: u16 },
+  { NAME: data          ; TYPE: [u8; length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE OverwatchPacket.magic
+  FIXED_VALUE: "BLIZ";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: OverwatchPacket;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: OverwatchPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+ENCRYPTION: BLIZZARD_PROPRIETARY
+DEFAULT_PORT: 3074

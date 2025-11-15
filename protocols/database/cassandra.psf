@@ -1,0 +1,52 @@
+# Cassandra Protocol Signature (CQL Binary Protocol)
+# Apache Cassandra native protocol
+
+@SEGMENT.FORMATS
+
+DEFINE CqlFrame
+  { NAME: version       ; TYPE: u8 },
+  { NAME: flags         ; TYPE: u8 },
+  { NAME: stream        ; TYPE: u16 },
+  { NAME: opcode        ; TYPE: u8 },
+  { NAME: length        ; TYPE: u32 },
+  { NAME: body          ; TYPE: [u8; length] };
+
+DEFINE CqlStartup
+  { NAME: version       ; TYPE: u8 },
+  { NAME: flags         ; TYPE: u8 },
+  { NAME: stream        ; TYPE: u16 },
+  { NAME: opcode        ; TYPE: u8 },
+  { NAME: length        ; TYPE: u32 },
+  { NAME: options       ; TYPE: [u8; length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE CqlFrame.version
+  SEMANTIC: PROTOCOL_VERSION
+  VALUES: { V3: 0x03, V4: 0x04, V5: 0x05 };
+
+DEFINE CqlFrame.opcode
+  SEMANTIC: OPCODE_TYPE
+  VALUES: { ERROR: 0x00, STARTUP: 0x01, READY: 0x02, AUTHENTICATE: 0x03, OPTIONS: 0x05,
+            SUPPORTED: 0x06, QUERY: 0x07, RESULT: 0x08, PREPARE: 0x09, EXECUTE: 0x0A,
+            REGISTER: 0x0B, EVENT: 0x0C, BATCH: 0x0D, AUTH_CHALLENGE: 0x0E, AUTH_RESPONSE: 0x0F, AUTH_SUCCESS: 0x10 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: CqlStartup;
+  PHASE: ACTIVE
+    FORMAT: CqlFrame;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: CqlFrame;
+  PHASE: ACTIVE
+    FORMAT: CqlFrame;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+TLS: OPTIONAL
+DEFAULT_PORT: 9042

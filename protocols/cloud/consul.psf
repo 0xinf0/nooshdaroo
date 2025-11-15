@@ -1,0 +1,45 @@
+# Consul Protocol Signature
+# Service mesh and service discovery
+
+@SEGMENT.FORMATS
+
+DEFINE ConsulHttpRequest
+  { NAME: method        ; TYPE: [u8; variable] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: path          ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: version       ; TYPE: [u8; 8] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] },
+  { NAME: json_body     ; TYPE: [u8; variable] };
+
+DEFINE ConsulRpcRequest
+  { NAME: msg_type      ; TYPE: u8 },
+  { NAME: length        ; TYPE: u32 },
+  { NAME: msgpack_data  ; TYPE: [u8; length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE ConsulHttpRequest.path
+  SEMANTIC: API_PATH
+  PREFIX: "/v1/";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: ConsulHttpRequest;
+    FORMAT: ConsulRpcRequest;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: ConsulHttpRequest;
+    FORMAT: ConsulRpcRequest;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: HTTP
+TLS: OPTIONAL
+DEFAULT_PORT: 8500
+RPC_PORT: 8300

@@ -1,0 +1,39 @@
+# Nooshdaroo Configuration - YouTube Streaming Emulation
+#
+# Mimics YouTube adaptive streaming with 2-second chunks and
+# quality adaptation based on network conditions.
+
+[client]
+bind_address = "127.0.0.1:1080"
+server_address = "example.com:443"
+proxy_type = "socks5"
+
+[traffic]
+application_profile = "youtube"
+enabled = true
+
+[bandwidth]
+adaptive_quality = true
+initial_quality = "medium"
+auto_adapt = true
+
+[shapeshift]
+strategy = "fixed"
+initial_protocol = "https"
+
+[traffic.advanced]
+enable_timing_emulation = true
+enable_size_padding = true
+
+packet_size_distribution = "normal"
+mean_packet_size = 1400
+stddev_packet_size = 100
+
+# YouTube 2-second chunk pattern
+enable_bursts = true
+burst_probability = 1.0
+burst_size = 800
+
+mean_delay = 3
+stddev_delay = 2
+jitter_ms = 8

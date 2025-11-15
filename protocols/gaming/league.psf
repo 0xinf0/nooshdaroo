@@ -1,0 +1,41 @@
+# League of Legends Protocol Signature
+# Riot Games LoL network protocol
+
+@SEGMENT.FORMATS
+
+DEFINE LeaguePacket
+  { NAME: header        ; TYPE: u8 },
+  { NAME: channel       ; TYPE: u8 },
+  { NAME: sequence      ; TYPE: u16 },
+  { NAME: length        ; TYPE: u16 },
+  { NAME: data          ; TYPE: [u8; length] };
+
+DEFINE LeagueHandshake
+  { NAME: magic         ; TYPE: [u8; 4] },
+  { NAME: protocol_ver  ; TYPE: u16 },
+  { NAME: encryption    ; TYPE: u8 };
+
+@SEGMENT.SEMANTICS
+
+DEFINE LeagueHandshake.magic
+  FIXED_VALUE: "RIOT";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: LeagueHandshake;
+  PHASE: ACTIVE
+    FORMAT: LeaguePacket;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: LeagueHandshake;
+  PHASE: ACTIVE
+    FORMAT: LeaguePacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+ENCRYPTION: Blowfish
+DEFAULT_PORT: 5000

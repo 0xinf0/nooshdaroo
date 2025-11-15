@@ -1,0 +1,51 @@
+# AMQP Protocol Signature (ISO/IEC 19464)
+# Advanced Message Queuing Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE AmqpProtocolHeader
+  { NAME: magic         ; TYPE: [u8; 4] },
+  { NAME: protocol_id   ; TYPE: u8 },
+  { NAME: major         ; TYPE: u8 },
+  { NAME: minor         ; TYPE: u8 },
+  { NAME: revision      ; TYPE: u8 };
+
+DEFINE AmqpFrame
+  { NAME: frame_type    ; TYPE: u8 },
+  { NAME: channel       ; TYPE: u16 },
+  { NAME: size          ; TYPE: u32 },
+  { NAME: payload       ; TYPE: [u8; size] },
+  { NAME: frame_end     ; TYPE: u8 };
+
+@SEGMENT.SEMANTICS
+
+DEFINE AmqpProtocolHeader.magic
+  FIXED_VALUE: "AMQP";
+
+DEFINE AmqpFrame.frame_type
+  SEMANTIC: FRAME_TYPE
+  VALUES: { METHOD: 1, HEADER: 2, BODY: 3, HEARTBEAT: 8 };
+
+DEFINE AmqpFrame.frame_end
+  FIXED_VALUE: 0xCE;
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: AmqpProtocolHeader;
+  PHASE: ACTIVE
+    FORMAT: AmqpFrame;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: AmqpProtocolHeader;
+  PHASE: ACTIVE
+    FORMAT: AmqpFrame;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+TLS: OPTIONAL
+DEFAULT_PORT: 5672
+SECURE_PORT: 5671

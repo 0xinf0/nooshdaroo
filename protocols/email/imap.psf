@@ -1,0 +1,67 @@
+# IMAP Protocol Signature (RFC 9051)
+# Internet Message Access Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE ImapCommand
+  { NAME: tag           ; TYPE: [u8; variable] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: command       ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: arguments     ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] };
+
+DEFINE ImapResponse
+  { NAME: type          ; TYPE: u8 },
+  { NAME: content       ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] };
+
+DEFINE ImapFetch
+  { NAME: tag           ; TYPE: [u8; variable] },
+  { NAME: space         ; TYPE: u8 },
+  { NAME: sequence      ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: items         ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE ImapCommand.command
+  SEMANTIC: COMMAND_TYPE
+  VALUES: { CAPABILITY: "CAPABILITY", NOOP: "NOOP", LOGOUT: "LOGOUT", STARTTLS: "STARTTLS",
+            LOGIN: "LOGIN", SELECT: "SELECT", EXAMINE: "EXAMINE", CREATE: "CREATE",
+            DELETE: "DELETE", RENAME: "RENAME", SUBSCRIBE: "SUBSCRIBE", UNSUBSCRIBE: "UNSUBSCRIBE",
+            LIST: "LIST", LSUB: "LSUB", STATUS: "STATUS", APPEND: "APPEND", CHECK: "CHECK",
+            CLOSE: "CLOSE", EXPUNGE: "EXPUNGE", SEARCH: "SEARCH", FETCH: "FETCH", STORE: "STORE", COPY: "COPY" };
+
+DEFINE ImapResponse.type
+  SEMANTIC: RESPONSE_TYPE
+  VALUES: { TAGGED: '*', UNTAGGED: '+', OK: 'O', NO: 'N', BAD: 'B' };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: ImapCommand;  # CAPABILITY
+    FORMAT: ImapCommand;  # LOGIN
+  PHASE: ACTIVE
+    FORMAT: ImapCommand;  # SELECT
+    FORMAT: ImapFetch;
+  PHASE: TEARDOWN
+    FORMAT: ImapCommand;  # LOGOUT
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: ImapResponse;
+  PHASE: ACTIVE
+    FORMAT: ImapResponse;
+  PHASE: TEARDOWN
+    FORMAT: ImapResponse;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+STARTTLS: OPTIONAL
+CIPHER: TLS_1_2_OR_HIGHER
+DEFAULT_PORT: 143
+SECURE_PORT: 993

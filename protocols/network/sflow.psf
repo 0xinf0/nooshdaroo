@@ -1,0 +1,39 @@
+# sFlow Protocol Signature (RFC 3176)
+# Sampled Flow monitoring
+
+@SEGMENT.FORMATS
+
+DEFINE SflowDatagram
+  { NAME: version       ; TYPE: u32 },
+  { NAME: agent_address ; TYPE: u32 },
+  { NAME: sub_agent_id  ; TYPE: u32 },
+  { NAME: sequence      ; TYPE: u32 },
+  { NAME: uptime        ; TYPE: u32 },
+  { NAME: num_samples   ; TYPE: u32 },
+  { NAME: samples       ; TYPE: [u8; variable] };
+
+DEFINE SflowSample
+  { NAME: enterprise    ; TYPE: u20 },
+  { NAME: format        ; TYPE: u12 },
+  { NAME: length        ; TYPE: u32 },
+  { NAME: data          ; TYPE: [u8; length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE SflowDatagram.version
+  FIXED_VALUE: 5;
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: SflowDatagram;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: SflowDatagram;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+DEFAULT_PORT: 6343

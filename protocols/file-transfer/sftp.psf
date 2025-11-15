@@ -1,0 +1,54 @@
+# SFTP Protocol Signature (SSH File Transfer Protocol)
+# Secure File Transfer over SSH
+
+@SEGMENT.FORMATS
+
+DEFINE SftpPacket
+  { NAME: length        ; TYPE: u32 },
+  { NAME: type          ; TYPE: u8 },
+  { NAME: payload       ; TYPE: [u8; length - 1] };
+
+DEFINE SftpInit
+  { NAME: length        ; TYPE: u32 },
+  { NAME: type          ; TYPE: u8 },
+  { NAME: version       ; TYPE: u32 };
+
+DEFINE SftpVersion
+  { NAME: length        ; TYPE: u32 },
+  { NAME: type          ; TYPE: u8 },
+  { NAME: version       ; TYPE: u32 },
+  { NAME: extensions    ; TYPE: [u8; length - 5] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE SftpInit.type
+  FIXED_VALUE: 1;
+
+DEFINE SftpVersion.type
+  FIXED_VALUE: 2;
+
+DEFINE SftpPacket.type
+  SEMANTIC: PACKET_TYPE
+  VALUES: { INIT: 1, VERSION: 2, OPEN: 3, CLOSE: 4, READ: 5, WRITE: 6,
+            LSTAT: 7, FSTAT: 8, SETSTAT: 9, FSETSTAT: 10, OPENDIR: 11, READDIR: 12,
+            REMOVE: 13, MKDIR: 14, RMDIR: 15, REALPATH: 16, STAT: 17, RENAME: 18 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: SftpInit;
+  PHASE: ACTIVE
+    FORMAT: SftpPacket;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: SftpVersion;
+  PHASE: ACTIVE
+    FORMAT: SftpPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: SSH
+CIPHER: AES_256_GCM
+DEFAULT_PORT: 22

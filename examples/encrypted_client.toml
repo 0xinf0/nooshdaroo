@@ -1,0 +1,32 @@
+# Nooshdaroo Client with Noise Protocol Encryption
+#
+# This configuration connects to an encrypted server using the Noise Protocol.
+# The server's public key is required for authentication.
+
+[client]
+bind_address = "127.0.0.1:1080"
+server_address = "myserver.com:8443"
+proxy_type = "socks5"
+
+# Protocol library directory
+protocol_dir = "protocols"
+
+# Noise Protocol transport encryption (NK pattern - server authentication)
+[transport]
+pattern = "nk"  # Verify server identity
+remote_public_key = "REPLACE_WITH_SERVER_PUBLIC_KEY"
+
+# Optional: Application traffic profile
+[traffic]
+application_profile = "zoom"
+enabled = true
+
+# Optional: Adaptive bandwidth
+[bandwidth]
+adaptive_quality = true
+initial_quality = "high"
+
+# Optional: Protocol shape-shifting
+[shapeshift]
+strategy = "adaptive"
+initial_protocol = "https"

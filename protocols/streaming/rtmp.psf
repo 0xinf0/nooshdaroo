@@ -1,0 +1,58 @@
+# RTMP Protocol Signature
+# Real Time Messaging Protocol (Adobe)
+
+@SEGMENT.FORMATS
+
+DEFINE RtmpHandshakeC0
+  { NAME: version       ; TYPE: u8 };
+
+DEFINE RtmpHandshakeC1
+  { NAME: time          ; TYPE: u32 },
+  { NAME: zero          ; TYPE: u32 },
+  { NAME: random        ; TYPE: [u8; 1528] };
+
+DEFINE RtmpChunkHeader
+  { NAME: fmt           ; TYPE: u2 },
+  { NAME: csid          ; TYPE: u6 },
+  { NAME: timestamp     ; TYPE: u24 },
+  { NAME: msg_length    ; TYPE: u24 },
+  { NAME: msg_type      ; TYPE: u8 },
+  { NAME: msg_stream_id ; TYPE: u32 };
+
+DEFINE RtmpMessage
+  { NAME: header        ; TYPE: RtmpChunkHeader },
+  { NAME: data          ; TYPE: [u8; header.msg_length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE RtmpHandshakeC0.version
+  FIXED_VALUE: 3;
+
+DEFINE RtmpChunkHeader.msg_type
+  SEMANTIC: MESSAGE_TYPE
+  VALUES: { SET_CHUNK_SIZE: 1, ABORT: 2, ACK: 3, USER_CONTROL: 4, WINDOW_ACK_SIZE: 5,
+            SET_PEER_BANDWIDTH: 6, AUDIO: 8, VIDEO: 9, AMF3_DATA: 15, AMF3_SHARED: 16,
+            AMF3_COMMAND: 17, AMF0_DATA: 18, AMF0_SHARED: 19, AMF0_COMMAND: 20, AGGREGATE: 22 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: RtmpHandshakeC0;
+    FORMAT: RtmpHandshakeC1;
+  PHASE: ACTIVE
+    FORMAT: RtmpMessage;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: RtmpHandshakeC0;
+    FORMAT: RtmpHandshakeC1;
+  PHASE: ACTIVE
+    FORMAT: RtmpMessage;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+RTMPS: TLS_WRAPPER
+DEFAULT_PORT: 1935
+SECURE_PORT: 443

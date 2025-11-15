@@ -1,0 +1,41 @@
+# Fortnite Protocol Signature
+# Epic Games Fortnite network protocol
+
+@SEGMENT.FORMATS
+
+DEFINE FortnitePacket
+  { NAME: is_ack        ; TYPE: u1 },
+  { NAME: packet_id     ; TYPE: u31 },
+  { NAME: sequence      ; TYPE: u16 },
+  { NAME: channel_id    ; TYPE: u8 },
+  { NAME: data          ; TYPE: [u8; variable] };
+
+DEFINE FortniteHandshake
+  { NAME: magic         ; TYPE: [u8; 8] },
+  { NAME: protocol_ver  ; TYPE: u32 },
+  { NAME: game_ver      ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE FortniteHandshake.magic
+  FIXED_VALUE: "UNREAL02";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: FortniteHandshake;
+  PHASE: ACTIVE
+    FORMAT: FortnitePacket;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: FortniteHandshake;
+  PHASE: ACTIVE
+    FORMAT: FortnitePacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+ENCRYPTION: PROPRIETARY
+DEFAULT_PORT: 7777

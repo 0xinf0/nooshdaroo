@@ -1,0 +1,59 @@
+# SIP Protocol Signature (RFC 3261)
+# Session Initiation Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE SipRequest
+  { NAME: method        ; TYPE: [u8; variable] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: request_uri   ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: version       ; TYPE: [u8; 7] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] },
+  { NAME: body          ; TYPE: [u8; variable] };
+
+DEFINE SipResponse
+  { NAME: version       ; TYPE: [u8; 7] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: status_code   ; TYPE: [u8; 3] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: reason        ; TYPE: [u8; variable] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] },
+  { NAME: body          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE SipRequest.method
+  SEMANTIC: SIP_METHOD
+  VALUES: { INVITE: "INVITE", ACK: "ACK", BYE: "BYE", CANCEL: "CANCEL",
+            REGISTER: "REGISTER", OPTIONS: "OPTIONS", PRACK: "PRACK", SUBSCRIBE: "SUBSCRIBE",
+            NOTIFY: "NOTIFY", PUBLISH: "PUBLISH", INFO: "INFO", REFER: "REFER", MESSAGE: "MESSAGE", UPDATE: "UPDATE" };
+
+DEFINE SipRequest.version
+  FIXED_VALUE: "SIP/2.0";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: SipRequest;
+  PHASE: ACTIVE
+    FORMAT: SipRequest;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: SipResponse;
+  PHASE: ACTIVE
+    FORMAT: SipResponse;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+FALLBACK: TCP
+TLS_VARIANT: SIPS
+DEFAULT_PORT: 5060
+SECURE_PORT: 5061

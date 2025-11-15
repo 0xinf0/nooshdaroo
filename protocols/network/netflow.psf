@@ -1,0 +1,54 @@
+# NetFlow Protocol Signature
+# Network traffic monitoring protocol
+
+@SEGMENT.FORMATS
+
+DEFINE NetflowV5Header
+  { NAME: version       ; TYPE: u16 },
+  { NAME: count         ; TYPE: u16 },
+  { NAME: sys_uptime    ; TYPE: u32 },
+  { NAME: unix_secs     ; TYPE: u32 },
+  { NAME: unix_nsecs    ; TYPE: u32 },
+  { NAME: flow_sequence ; TYPE: u32 },
+  { NAME: engine_type   ; TYPE: u8 },
+  { NAME: engine_id     ; TYPE: u8 },
+  { NAME: sampling      ; TYPE: u16 };
+
+DEFINE NetflowV5Record
+  { NAME: src_addr      ; TYPE: u32 },
+  { NAME: dst_addr      ; TYPE: u32 },
+  { NAME: next_hop      ; TYPE: u32 },
+  { NAME: input         ; TYPE: u16 },
+  { NAME: output        ; TYPE: u16 },
+  { NAME: packets       ; TYPE: u32 },
+  { NAME: octets        ; TYPE: u32 },
+  { NAME: first         ; TYPE: u32 },
+  { NAME: last          ; TYPE: u32 },
+  { NAME: src_port      ; TYPE: u16 },
+  { NAME: dst_port      ; TYPE: u16 },
+  { NAME: tcp_flags     ; TYPE: u8 },
+  { NAME: protocol      ; TYPE: u8 },
+  { NAME: tos           ; TYPE: u8 },
+  { NAME: src_as        ; TYPE: u16 },
+  { NAME: dst_as        ; TYPE: u16 };
+
+@SEGMENT.SEMANTICS
+
+DEFINE NetflowV5Header.version
+  FIXED_VALUE: 5;
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: NetflowV5Header;
+    FORMAT: NetflowV5Record;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: NetflowV5Header;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+DEFAULT_PORT: 2055

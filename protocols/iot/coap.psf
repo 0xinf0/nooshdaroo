@@ -1,0 +1,46 @@
+# CoAP Protocol Signature (RFC 7252)
+# Constrained Application Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE CoapMessage
+  { NAME: version       ; TYPE: u2 },
+  { NAME: type          ; TYPE: u2 },
+  { NAME: token_length  ; TYPE: u4 },
+  { NAME: code          ; TYPE: u8 },
+  { NAME: message_id    ; TYPE: u16 },
+  { NAME: token         ; TYPE: [u8; token_length] },
+  { NAME: options       ; TYPE: [u8; variable] },
+  { NAME: payload       ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE CoapMessage.version
+  FIXED_VALUE: 1;
+
+DEFINE CoapMessage.type
+  SEMANTIC: MESSAGE_TYPE
+  VALUES: { CON: 0, NON: 1, ACK: 2, RST: 3 };
+
+DEFINE CoapMessage.code
+  SEMANTIC: REQUEST_CODE
+  VALUES: { GET: 1, POST: 2, PUT: 3, DELETE: 4,
+            CREATED: 65, DELETED: 66, VALID: 67, CHANGED: 68, CONTENT: 69,
+            BAD_REQUEST: 128, UNAUTHORIZED: 129, NOT_FOUND: 132 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: CoapMessage;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: CoapMessage;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+DTLS: OPTIONAL
+DEFAULT_PORT: 5683
+SECURE_PORT: 5684

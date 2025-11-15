@@ -1,0 +1,50 @@
+# SCP Protocol Signature (Secure Copy)
+# Secure file copy over SSH
+
+@SEGMENT.FORMATS
+
+DEFINE ScpCommand
+  { NAME: opcode        ; TYPE: u8 },
+  { NAME: mode          ; TYPE: [u8; 4] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: size          ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: filename      ; TYPE: [u8; variable] },
+  { NAME: lf            ; TYPE: u8 };
+
+DEFINE ScpData
+  { NAME: data          ; TYPE: [u8; variable] };
+
+DEFINE ScpAck
+  { NAME: status        ; TYPE: u8 };
+
+@SEGMENT.SEMANTICS
+
+DEFINE ScpCommand.opcode
+  SEMANTIC: COMMAND_TYPE
+  VALUES: { FILE: 'C', DIRECTORY: 'D', END_DIR: 'E', TIME: 'T' };
+
+DEFINE ScpAck.status
+  SEMANTIC: STATUS_CODE
+  VALUES: { OK: 0, WARNING: 1, ERROR: 2 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: ScpCommand;
+  PHASE: ACTIVE
+    FORMAT: ScpData;
+    FORMAT: ScpAck;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: ScpAck;
+  PHASE: ACTIVE
+    FORMAT: ScpAck;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: SSH
+CIPHER: AES_256_GCM
+DEFAULT_PORT: 22

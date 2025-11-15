@@ -34,6 +34,10 @@ pub struct NooshdarooConfig {
     /// Detection resistance features
     #[serde(default)]
     pub detection: DetectionConfig,
+
+    /// Transport encryption (Noise Protocol)
+    #[serde(default)]
+    pub transport: Option<crate::noise_transport::NoiseConfig>,
 }
 
 impl Default for NooshdarooConfig {
@@ -47,6 +51,7 @@ impl Default for NooshdarooConfig {
             traffic_shaping: TrafficShapingConfig::default(),
             server: None,
             detection: DetectionConfig::default(),
+            transport: None,
         }
     }
 }

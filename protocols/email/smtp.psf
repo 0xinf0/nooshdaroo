@@ -1,0 +1,66 @@
+# SMTP Protocol Signature (RFC 5321)
+# Simple Mail Transfer Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE SmtpCommand
+  { NAME: command       ; TYPE: [u8; 4] },
+  { NAME: space         ; TYPE: u8 },
+  { NAME: parameters    ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] };
+
+DEFINE SmtpResponse
+  { NAME: code          ; TYPE: [u8; 3] },
+  { NAME: separator     ; TYPE: u8 },
+  { NAME: text          ; TYPE: [u8; variable] },
+  { NAME: crlf          ; TYPE: [u8; 2] };
+
+DEFINE SmtpData
+  { NAME: data          ; TYPE: [u8; variable] },
+  { NAME: terminator    ; TYPE: [u8; 5] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE SmtpCommand.command
+  SEMANTIC: COMMAND_TYPE
+  VALUES: { HELO: "HELO", EHLO: "EHLO", MAIL: "MAIL", RCPT: "RCPT", DATA: "DATA",
+            RSET: "RSET", VRFY: "VRFY", EXPN: "EXPN", HELP: "HELP", NOOP: "NOOP", QUIT: "QUIT" };
+
+DEFINE SmtpResponse.code
+  SEMANTIC: STATUS_CODE
+  VALUES: { READY: "220", OK: "250", START_DATA: "354", CLOSING: "221", ERROR: "5xx" };
+
+DEFINE SmtpData.terminator
+  FIXED_VALUE: "\r\n.\r\n";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: SmtpCommand;  # EHLO
+  PHASE: ACTIVE
+    FORMAT: SmtpCommand;  # MAIL FROM
+    FORMAT: SmtpCommand;  # RCPT TO
+    FORMAT: SmtpCommand;  # DATA
+    FORMAT: SmtpData;
+  PHASE: TEARDOWN
+    FORMAT: SmtpCommand;  # QUIT
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: SmtpResponse;  # 220
+  PHASE: ACTIVE
+    FORMAT: SmtpResponse;  # 250
+    FORMAT: SmtpResponse;  # 354
+    FORMAT: SmtpResponse;  # 250
+  PHASE: TEARDOWN
+    FORMAT: SmtpResponse;  # 221
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+STARTTLS: OPTIONAL
+CIPHER: TLS_1_2_OR_HIGHER
+DEFAULT_PORT: 25
+SUBMISSION_PORT: 587
+SECURE_PORT: 465

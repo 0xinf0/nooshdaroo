@@ -1,0 +1,56 @@
+# Kerberos Protocol Signature (RFC 4120)
+# Network authentication protocol
+
+@SEGMENT.FORMATS
+
+DEFINE KerberosMessage
+  { NAME: pvno          ; TYPE: u8 },
+  { NAME: msg_type      ; TYPE: u8 },
+  { NAME: padata        ; TYPE: [u8; variable] },
+  { NAME: req_body      ; TYPE: [u8; variable] };
+
+DEFINE KerberosAsReq
+  { NAME: pvno          ; TYPE: u8 },
+  { NAME: msg_type      ; TYPE: u8 },
+  { NAME: padata_count  ; TYPE: u16 },
+  { NAME: padata        ; TYPE: [u8; variable] },
+  { NAME: kdc_options   ; TYPE: u32 },
+  { NAME: cname         ; TYPE: [u8; variable] },
+  { NAME: realm         ; TYPE: [u8; variable] },
+  { NAME: sname         ; TYPE: [u8; variable] };
+
+DEFINE KerberosTicket
+  { NAME: tkt_vno       ; TYPE: u8 },
+  { NAME: realm         ; TYPE: [u8; variable] },
+  { NAME: sname         ; TYPE: [u8; variable] },
+  { NAME: enc_part      ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE KerberosMessage.pvno
+  FIXED_VALUE: 5;
+
+DEFINE KerberosMessage.msg_type
+  SEMANTIC: MESSAGE_TYPE
+  VALUES: { AS_REQ: 10, AS_REP: 11, TGS_REQ: 12, TGS_REP: 13, AP_REQ: 14, AP_REP: 15, KRB_ERROR: 30 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: KerberosAsReq;
+  PHASE: ACTIVE
+    FORMAT: KerberosMessage;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: KerberosTicket;
+  PHASE: ACTIVE
+    FORMAT: KerberosMessage;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+FALLBACK: TCP
+CIPHER: AES_256
+DEFAULT_PORT: 88

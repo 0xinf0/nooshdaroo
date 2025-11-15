@@ -1,0 +1,45 @@
+# L2TP Protocol Signature (RFC 2661)
+# Layer 2 Tunneling Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE L2tpControlMessage
+  { NAME: flags         ; TYPE: u16 },
+  { NAME: length        ; TYPE: u16 },
+  { NAME: tunnel_id     ; TYPE: u16 },
+  { NAME: session_id    ; TYPE: u16 },
+  { NAME: ns            ; TYPE: u16 },
+  { NAME: nr            ; TYPE: u16 },
+  { NAME: avps          ; TYPE: [u8; length - 12] };
+
+DEFINE L2tpDataMessage
+  { NAME: flags         ; TYPE: u16 },
+  { NAME: tunnel_id     ; TYPE: u16 },
+  { NAME: session_id    ; TYPE: u16 },
+  { NAME: data          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE L2tpControlMessage.flags
+  SEMANTIC: MESSAGE_FLAGS
+  BIT: { T: 15, L: 14, S: 9, O: 8, P: 7 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: L2tpControlMessage;
+  PHASE: ACTIVE
+    FORMAT: L2tpDataMessage;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: L2tpControlMessage;
+  PHASE: ACTIVE
+    FORMAT: L2tpDataMessage;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+COMBINED_WITH: IPsec
+DEFAULT_PORT: 1701

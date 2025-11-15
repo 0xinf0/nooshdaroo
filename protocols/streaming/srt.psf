@@ -1,0 +1,54 @@
+# SRT Protocol Signature
+# Secure Reliable Transport
+
+@SEGMENT.FORMATS
+
+DEFINE SrtHandshake
+  { NAME: control_type  ; TYPE: u16 },
+  { NAME: subtype       ; TYPE: u16 },
+  { NAME: info          ; TYPE: u32 },
+  { NAME: timestamp     ; TYPE: u32 },
+  { NAME: socket_id     ; TYPE: u32 },
+  { NAME: version       ; TYPE: u32 },
+  { NAME: enc_field     ; TYPE: u32 },
+  { NAME: extension     ; TYPE: u32 },
+  { NAME: initial_seq   ; TYPE: u32 },
+  { NAME: mtu           ; TYPE: u32 },
+  { NAME: flow_window   ; TYPE: u32 },
+  { NAME: req_type      ; TYPE: u32 },
+  { NAME: socket_id2    ; TYPE: u32 };
+
+DEFINE SrtDataPacket
+  { NAME: flags         ; TYPE: u16 },
+  { NAME: msg_number    ; TYPE: u32 },
+  { NAME: timestamp     ; TYPE: u32 },
+  { NAME: dest_socket   ; TYPE: u32 },
+  { NAME: data          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE SrtHandshake.control_type
+  FIXED_VALUE: 0x8000;
+
+DEFINE SrtHandshake.version
+  FIXED_VALUE: 5;
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: SrtHandshake;
+  PHASE: ACTIVE
+    FORMAT: SrtDataPacket;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: SrtHandshake;
+  PHASE: ACTIVE
+    FORMAT: SrtDataPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+CIPHER: AES_128_CTR
+DEFAULT_PORT: variable

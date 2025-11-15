@@ -1,0 +1,40 @@
+# Skype Protocol Signature
+# Voice over IP and instant messaging
+
+@SEGMENT.FORMATS
+
+DEFINE SkypeHandshake
+  { NAME: magic         ; TYPE: [u8; 4] },
+  { NAME: version       ; TYPE: u16 },
+  { NAME: flags         ; TYPE: u16 };
+
+DEFINE SkypePacket
+  { NAME: type          ; TYPE: u8 },
+  { NAME: length        ; TYPE: u16 },
+  { NAME: sequence      ; TYPE: u32 },
+  { NAME: data          ; TYPE: [u8; length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE SkypeHandshake.magic
+  FIXED_VALUE: "SKPE";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: SkypeHandshake;
+  PHASE: ACTIVE
+    FORMAT: SkypePacket;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: SkypeHandshake;
+  PHASE: ACTIVE
+    FORMAT: SkypePacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+CIPHER: AES_256
+DEFAULT_PORT: variable

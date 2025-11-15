@@ -1,0 +1,42 @@
+# TACACS+ Protocol Signature (RFC 8907)
+# Terminal Access Controller Access-Control System Plus
+
+@SEGMENT.FORMATS
+
+DEFINE TacacsHeader
+  { NAME: version       ; TYPE: u8 },
+  { NAME: type          ; TYPE: u8 },
+  { NAME: seq_no        ; TYPE: u8 },
+  { NAME: flags         ; TYPE: u8 },
+  { NAME: session_id    ; TYPE: u32 },
+  { NAME: length        ; TYPE: u32 };
+
+DEFINE TacacsPacket
+  { NAME: header        ; TYPE: TacacsHeader },
+  { NAME: body          ; TYPE: [u8; header.length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE TacacsHeader.version
+  SEMANTIC: VERSION
+  VALUES: { TACACS_PLUS: 0xC0, TACACS_PLUS_MINOR_0: 0xC0, TACACS_PLUS_MINOR_1: 0xC1 };
+
+DEFINE TacacsHeader.type
+  SEMANTIC: PACKET_TYPE
+  VALUES: { AUTHEN: 1, AUTHOR: 2, ACCT: 3 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: TacacsPacket;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: TacacsPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+ENCRYPTION: MD5_OBFUSCATION
+DEFAULT_PORT: 49

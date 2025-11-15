@@ -1,0 +1,61 @@
+# WireGuard Protocol Signature
+# Modern VPN with minimal attack surface
+
+@SEGMENT.FORMATS
+
+DEFINE WgHandshakeInit
+  { NAME: type          ; TYPE: u8 },
+  { NAME: sender        ; TYPE: u32 },
+  { NAME: ephemeral     ; TYPE: [u8; 32] },
+  { NAME: static        ; TYPE: [u8; 48] },
+  { NAME: timestamp     ; TYPE: [u8; 28] },
+  { NAME: mac1          ; TYPE: [u8; 16] },
+  { NAME: mac2          ; TYPE: [u8; 16] };
+
+DEFINE WgHandshakeResponse
+  { NAME: type          ; TYPE: u8 },
+  { NAME: sender        ; TYPE: u32 },
+  { NAME: receiver      ; TYPE: u32 },
+  { NAME: ephemeral     ; TYPE: [u8; 32] },
+  { NAME: empty         ; TYPE: [u8; 16] },
+  { NAME: mac1          ; TYPE: [u8; 16] },
+  { NAME: mac2          ; TYPE: [u8; 16] };
+
+DEFINE WgDataPacket
+  { NAME: type          ; TYPE: u8 },
+  { NAME: receiver      ; TYPE: u32 },
+  { NAME: counter       ; TYPE: u64 },
+  { NAME: data          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE WgHandshakeInit.type
+  FIXED_VALUE: 1;
+
+DEFINE WgHandshakeResponse.type
+  FIXED_VALUE: 2;
+
+DEFINE WgDataPacket.type
+  FIXED_VALUE: 4;
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: WgHandshakeInit;
+  PHASE: ACTIVE
+    FORMAT: WgDataPacket;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: WgHandshakeResponse;
+  PHASE: ACTIVE
+    FORMAT: WgDataPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+CIPHER: ChaCha20Poly1305
+KEY_EXCHANGE: Curve25519
+HASH: BLAKE2s
+DEFAULT_PORT: 51820

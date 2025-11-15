@@ -1,0 +1,54 @@
+# PostgreSQL Protocol Signature
+# PostgreSQL wire protocol
+
+@SEGMENT.FORMATS
+
+DEFINE PgStartupMessage
+  { NAME: length        ; TYPE: u32 },
+  { NAME: protocol      ; TYPE: u32 },
+  { NAME: parameters    ; TYPE: [u8; length - 8] };
+
+DEFINE PgMessage
+  { NAME: type          ; TYPE: u8 },
+  { NAME: length        ; TYPE: u32 },
+  { NAME: payload       ; TYPE: [u8; length - 4] };
+
+DEFINE PgQuery
+  { NAME: type          ; TYPE: u8 },
+  { NAME: length        ; TYPE: u32 },
+  { NAME: query         ; TYPE: [u8; length - 4] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE PgStartupMessage.protocol
+  FIXED_VALUE: 0x00030000;
+
+DEFINE PgMessage.type
+  SEMANTIC: MESSAGE_TYPE
+  VALUES: { AUTHENTICATION: 'R', BACKEND_KEY_DATA: 'K', BIND: 'B', BIND_COMPLETE: '2',
+            CLOSE: 'C', CLOSE_COMPLETE: '3', COMMAND_COMPLETE: 'C', COPY_DATA: 'd',
+            COPY_DONE: 'c', COPY_FAIL: 'f', DATA_ROW: 'D', DESCRIBE: 'D',
+            EMPTY_QUERY: 'I', ERROR: 'E', EXECUTE: 'E', FLUSH: 'H',
+            NO_DATA: 'n', NOTICE: 'N', PARAMETER_DESCRIPTION: 't', PARAMETER_STATUS: 'S',
+            PARSE: 'P', PARSE_COMPLETE: '1', PASSWORD: 'p', PORTAL_SUSPENDED: 's',
+            QUERY: 'Q', READY_FOR_QUERY: 'Z', ROW_DESCRIPTION: 'T', SYNC: 'S', TERMINATE: 'X' };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: PgStartupMessage;
+  PHASE: ACTIVE
+    FORMAT: PgQuery;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: PgMessage;
+  PHASE: ACTIVE
+    FORMAT: PgMessage;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+STARTTLS: OPTIONAL
+DEFAULT_PORT: 5432

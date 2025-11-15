@@ -9,13 +9,29 @@ Nooshdaroo is a sophisticated proxy system that disguises encrypted SOCKS5 traff
 
 ## Features
 
+### Core Features
 - **Multiple Proxy Types**: SOCKS5, HTTP CONNECT, Transparent proxy
 - **Socat-like Relay**: Bidirectional traffic relay between endpoints
 - **Mobile-Friendly**: iOS/Android FFI bindings for native integration
 - **Protocol Shape-Shifting**: 5 strategies for dynamic protocol emulation
-- **Traffic Shaping**: Timing and size emulation of target protocols
 - **100+ Protocols**: Pre-defined protocol signatures (HTTPS, SSH, DNS, QUIC, WebSocket, etc.)
 - **Cross-Platform**: Works on Linux, macOS, Windows, iOS, Android
+
+### Advanced Traffic Shaping ✨ NEW
+- **Application Profiles**: Mimic real applications (Zoom, Netflix, YouTube, Teams, WhatsApp, HTTPS)
+- **Statistical Traffic Emulation**: Match packet size distributions, timing patterns, and burst behaviors
+- **State Machine Emulation**: Replicate connection phases (handshake → active → teardown)
+- **Adaptive Bandwidth Optimization**: Auto-adjust quality based on network conditions (RTT, loss, throughput)
+- **Quality Tiers**: 4 quality levels with automatic adaptation
+- **Smart Rate Limiting**: Token bucket with smooth quality transitions
+
+### Encrypted Transport (Noise Protocol) ✨ NEW
+- **End-to-End Encryption**: Noise Protocol Framework with ChaCha20-Poly1305
+- **Multiple Patterns**: NK (server auth), XX (anonymous), KK (mutual auth)
+- **Forward Secrecy**: Ephemeral X25519 key exchange
+- **Easy Key Generation**: Beautiful CLI tool - `nooshdaroo genkey` creates configs automatically
+- **Auto-Config Generation**: Generate ready-to-use server/client configs with one command
+- **Compatible with Rathole**: Same Noise protocol patterns
 
 ## Quick Start
 
@@ -103,6 +119,42 @@ Then run with:
 ```bash
 nooshdaroo client --config nooshdaroo.toml
 ```
+
+### Advanced: Application Profile Configuration
+
+Use pre-configured application profiles for realistic traffic patterns:
+
+```bash
+# Zoom video conferencing emulation
+nooshdaroo client --config examples/profiles/zoom_config.toml
+
+# Netflix streaming emulation
+nooshdaroo client --config examples/profiles/netflix_config.toml
+
+# YouTube streaming
+nooshdaroo client --config examples/profiles/youtube_config.toml
+```
+
+Or configure in TOML:
+
+```toml
+[client]
+bind_address = "127.0.0.1:1080"
+server_address = "example.com:8443"
+
+# Use Zoom traffic profile
+[traffic]
+application_profile = "zoom"
+enabled = true
+
+# Enable adaptive bandwidth optimization
+[bandwidth]
+adaptive_quality = true
+initial_quality = "high"
+auto_adapt = true
+```
+
+See [ADVANCED_TRAFFIC_SHAPING.md](ADVANCED_TRAFFIC_SHAPING.md) for detailed configuration options.
 
 ## Usage Examples
 
@@ -250,6 +302,9 @@ Each protocol includes:
 
 - [Quick Start Guide](NOOSHDAROO_QUICKSTART.md) - 5-minute tutorial
 - [Design Document](NOOSHDAROO_DESIGN.md) - Architecture and 100 protocols
+- **[Advanced Traffic Shaping](ADVANCED_TRAFFIC_SHAPING.md)** - Application profiles and bandwidth optimization ✨ NEW
+- **[Noise Protocol Encryption](NOISE_TRANSPORT.md)** - End-to-end encrypted transport ✨ NEW
+- **[Key Generation Guide](KEYGEN_GUIDE.md)** - Easy keygen tool tutorial ✨ NEW
 - [Mobile Integration](NOOSHDAROO_MOBILE.md) - iOS/Android/React Native guide
 - [Full Documentation](NOOSHDAROO_README.md) - Complete feature reference
 - [Summary](NOOSHDAROO_SUMMARY.md) - Project overview
@@ -326,13 +381,13 @@ at your option.
 
 ## Related Projects
 
-- [Proteus](https://github.com/0xinf0/proteus) - The parent project (Pluggable Transport)
+- [Proteus](https://github.com/unblockable/proteus) - The parent project (Pluggable Transport)
 - [Rathole](https://github.com/rapiz1/rathole) - Secure reverse tunnel
 - [v2ray](https://github.com/v2ray/v2ray-core) - Platform for building proxies
 
 ## Credits
 
-Nooshdaroo is built on top of [Proteus](https://github.com/0xinf0/proteus), which is itself based on [Rathole](https://github.com/rapiz1/rathole).
+Original credit goes to [Proteus](https://github.com/unblockable/proteus).
 
 **Author**: 0xinf0
 **Repository**: https://github.com/0xinf0/Nooshdaroo

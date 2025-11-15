@@ -1,0 +1,38 @@
+# REST API Protocol Signature
+# Representational State Transfer
+
+@SEGMENT.FORMATS
+
+DEFINE RestRequest
+  { NAME: method        ; TYPE: [u8; variable] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: path          ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: version       ; TYPE: [u8; 8] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] },
+  { NAME: body          ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE RestRequest.method
+  SEMANTIC: HTTP_METHOD
+  VALUES: { GET: "GET", POST: "POST", PUT: "PUT", PATCH: "PATCH", DELETE: "DELETE", HEAD: "HEAD", OPTIONS: "OPTIONS" };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: RestRequest;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: RestRequest;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: HTTP
+TLS: RECOMMENDED
+DEFAULT_PORT: 80
+SECURE_PORT: 443

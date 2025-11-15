@@ -1,0 +1,40 @@
+# ZeroTier Protocol Signature
+# Global area network protocol
+
+@SEGMENT.FORMATS
+
+DEFINE ZerotierPacket
+  { NAME: verb          ; TYPE: u8 },
+  { NAME: packet_id     ; TYPE: u64 },
+  { NAME: dest_address  ; TYPE: [u8; 5] },
+  { NAME: source_address; TYPE: [u8; 5] },
+  { NAME: mac           ; TYPE: [u8; 8] },
+  { NAME: payload       ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE ZerotierPacket.verb
+  SEMANTIC: PACKET_TYPE
+  VALUES: { NOP: 0, HELLO: 1, ERROR: 2, OK: 3, WHOIS: 4, RENDEZVOUS: 5, FRAME: 6,
+            MULTICAST_FRAME: 7, MULTICAST_LIKE: 8, NETWORK_CREDENTIALS: 9, NETWORK_CONFIG_REQUEST: 10, NETWORK_CONFIG: 11 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: ZerotierPacket;
+  PHASE: ACTIVE
+    FORMAT: ZerotierPacket;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: ZerotierPacket;
+  PHASE: ACTIVE
+    FORMAT: ZerotierPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: UDP
+CIPHER: Salsa20
+KEY_EXCHANGE: Curve25519
+DEFAULT_PORT: 9993

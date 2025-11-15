@@ -1,0 +1,41 @@
+# RethinkDB Protocol Signature
+# Real-time database wire protocol
+
+@SEGMENT.FORMATS
+
+DEFINE RethinkdbHandshake
+  { NAME: magic         ; TYPE: u32 },
+  { NAME: version       ; TYPE: u32 },
+  { NAME: auth_key_len  ; TYPE: u32 },
+  { NAME: auth_key      ; TYPE: [u8; auth_key_len] },
+  { NAME: protocol      ; TYPE: u32 };
+
+DEFINE RethinkdbQuery
+  { NAME: token         ; TYPE: u64 },
+  { NAME: length        ; TYPE: u32 },
+  { NAME: json_query    ; TYPE: [u8; length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE RethinkdbHandshake.magic
+  FIXED_VALUE: 0x34c2bdc3;
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: RethinkdbHandshake;
+  PHASE: ACTIVE
+    FORMAT: RethinkdbQuery;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: RethinkdbHandshake;
+  PHASE: ACTIVE
+    FORMAT: RethinkdbQuery;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+TLS: OPTIONAL
+DEFAULT_PORT: 28015

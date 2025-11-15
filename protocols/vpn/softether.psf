@@ -1,0 +1,39 @@
+# SoftEther VPN Protocol Signature
+# Multi-protocol VPN software
+
+@SEGMENT.FORMATS
+
+DEFINE SoftEtherHandshake
+  { NAME: magic         ; TYPE: [u8; 8] },
+  { NAME: version       ; TYPE: u32 },
+  { NAME: protocol      ; TYPE: u8 };
+
+DEFINE SoftEtherPacket
+  { NAME: flags         ; TYPE: u8 },
+  { NAME: length        ; TYPE: u32 },
+  { NAME: data          ; TYPE: [u8; length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE SoftEtherHandshake.magic
+  FIXED_VALUE: "SEVPN2.0";
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: SoftEtherHandshake;
+  PHASE: ACTIVE
+    FORMAT: SoftEtherPacket;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: SoftEtherHandshake;
+  PHASE: ACTIVE
+    FORMAT: SoftEtherPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+CIPHER: AES_256_GCM
+DEFAULT_PORT: 443

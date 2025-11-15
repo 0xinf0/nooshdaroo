@@ -1,0 +1,48 @@
+# Signal Protocol Signature
+# Signal secure messaging protocol
+
+@SEGMENT.FORMATS
+
+DEFINE SignalEnvelope
+  { NAME: type          ; TYPE: u8 },
+  { NAME: source        ; TYPE: [u8; variable] },
+  { NAME: timestamp     ; TYPE: u64 },
+  { NAME: content       ; TYPE: [u8; variable] };
+
+DEFINE SignalMessage
+  { NAME: version       ; TYPE: u8 },
+  { NAME: mac_key       ; TYPE: [u8; 32] },
+  { NAME: iv            ; TYPE: [u8; 16] },
+  { NAME: ciphertext    ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE SignalEnvelope.type
+  SEMANTIC: MESSAGE_TYPE
+  VALUES: { UNKNOWN: 0, CIPHERTEXT: 1, KEY_EXCHANGE: 2, PREKEY_BUNDLE: 3, RECEIPT: 5, UNIDENTIFIED_SENDER: 6 };
+
+DEFINE SignalMessage.version
+  SEMANTIC: PROTOCOL_VERSION
+  VALUES: { V3: 3 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: SignalEnvelope;
+  PHASE: ACTIVE
+    FORMAT: SignalMessage;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: SignalEnvelope;
+  PHASE: ACTIVE
+    FORMAT: SignalMessage;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: HTTPS
+CIPHER: AES_256_CBC
+KEY_EXCHANGE: X25519
+HASH: SHA256
+DEFAULT_PORT: 443

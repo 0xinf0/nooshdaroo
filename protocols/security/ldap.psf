@@ -1,0 +1,47 @@
+# LDAP Protocol Signature (RFC 4511)
+# Lightweight Directory Access Protocol
+
+@SEGMENT.FORMATS
+
+DEFINE LdapMessage
+  { NAME: message_id    ; TYPE: u32 },
+  { NAME: protocol_op   ; TYPE: u8 },
+  { NAME: payload       ; TYPE: [u8; variable] },
+  { NAME: controls      ; TYPE: [u8; variable] };
+
+DEFINE LdapBindRequest
+  { NAME: message_id    ; TYPE: u32 },
+  { NAME: protocol_op   ; TYPE: u8 },
+  { NAME: version       ; TYPE: u8 },
+  { NAME: name          ; TYPE: [u8; variable] },
+  { NAME: authentication; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE LdapMessage.protocol_op
+  SEMANTIC: OPERATION_TYPE
+  VALUES: { BIND_REQUEST: 0x60, BIND_RESPONSE: 0x61, UNBIND_REQUEST: 0x42,
+            SEARCH_REQUEST: 0x63, SEARCH_RESULT_ENTRY: 0x64, SEARCH_RESULT_DONE: 0x65,
+            MODIFY_REQUEST: 0x66, MODIFY_RESPONSE: 0x67, ADD_REQUEST: 0x68, ADD_RESPONSE: 0x69,
+            DEL_REQUEST: 0x4A, DEL_RESPONSE: 0x6B, COMPARE_REQUEST: 0x6E, COMPARE_RESPONSE: 0x6F };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: LdapBindRequest;
+  PHASE: ACTIVE
+    FORMAT: LdapMessage;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: LdapMessage;
+  PHASE: ACTIVE
+    FORMAT: LdapMessage;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+STARTTLS: OPTIONAL
+DEFAULT_PORT: 389
+SECURE_PORT: 636

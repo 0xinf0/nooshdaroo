@@ -1,0 +1,45 @@
+# IPsec Protocol Signature (RFC 4301)
+# Internet Protocol Security
+
+@SEGMENT.FORMATS
+
+DEFINE EspPacket
+  { NAME: spi           ; TYPE: u32 },
+  { NAME: sequence      ; TYPE: u32 },
+  { NAME: payload       ; TYPE: [u8; variable] },
+  { NAME: padding       ; TYPE: [u8; variable] },
+  { NAME: pad_length    ; TYPE: u8 },
+  { NAME: next_header   ; TYPE: u8 },
+  { NAME: icv           ; TYPE: [u8; variable] };
+
+DEFINE AhPacket
+  { NAME: next_header   ; TYPE: u8 },
+  { NAME: payload_len   ; TYPE: u8 },
+  { NAME: reserved      ; TYPE: u16 },
+  { NAME: spi           ; TYPE: u32 },
+  { NAME: sequence      ; TYPE: u32 },
+  { NAME: icv           ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE EspPacket.next_header
+  SEMANTIC: PROTOCOL_TYPE
+  VALUES: { TCP: 6, UDP: 17, ICMP: 1 };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: EspPacket;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: EspPacket;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: IP
+ESP_PROTOCOL: 50
+AH_PROTOCOL: 51
+CIPHER: AES_256_GCM
+AUTH: HMAC_SHA256

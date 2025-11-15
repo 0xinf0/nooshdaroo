@@ -1,0 +1,61 @@
+# Memcached Protocol Signature
+# Memcached binary protocol
+
+@SEGMENT.FORMATS
+
+DEFINE MemcachedRequest
+  { NAME: magic         ; TYPE: u8 },
+  { NAME: opcode        ; TYPE: u8 },
+  { NAME: key_length    ; TYPE: u16 },
+  { NAME: extras_length ; TYPE: u8 },
+  { NAME: data_type     ; TYPE: u8 },
+  { NAME: vbucket       ; TYPE: u16 },
+  { NAME: total_body    ; TYPE: u32 },
+  { NAME: opaque        ; TYPE: u32 },
+  { NAME: cas           ; TYPE: u64 },
+  { NAME: extras        ; TYPE: [u8; extras_length] },
+  { NAME: key           ; TYPE: [u8; key_length] },
+  { NAME: value         ; TYPE: [u8; total_body - extras_length - key_length] };
+
+DEFINE MemcachedResponse
+  { NAME: magic         ; TYPE: u8 },
+  { NAME: opcode        ; TYPE: u8 },
+  { NAME: key_length    ; TYPE: u16 },
+  { NAME: extras_length ; TYPE: u8 },
+  { NAME: data_type     ; TYPE: u8 },
+  { NAME: status        ; TYPE: u16 },
+  { NAME: total_body    ; TYPE: u32 },
+  { NAME: opaque        ; TYPE: u32 },
+  { NAME: cas           ; TYPE: u64 },
+  { NAME: extras        ; TYPE: [u8; extras_length] },
+  { NAME: value         ; TYPE: [u8; total_body - extras_length] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE MemcachedRequest.magic
+  FIXED_VALUE: 0x80;
+
+DEFINE MemcachedResponse.magic
+  FIXED_VALUE: 0x81;
+
+DEFINE MemcachedRequest.opcode
+  SEMANTIC: COMMAND_TYPE
+  VALUES: { GET: 0x00, SET: 0x01, ADD: 0x02, REPLACE: 0x03, DELETE: 0x04,
+            INCREMENT: 0x05, DECREMENT: 0x06, QUIT: 0x07, FLUSH: 0x08, GETQ: 0x09,
+            NOOP: 0x0A, VERSION: 0x0B, GETK: 0x0C, GETKQ: 0x0D, APPEND: 0x0E, PREPEND: 0x0F };
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: ACTIVE
+    FORMAT: MemcachedRequest;
+
+ROLE: SERVER
+  PHASE: ACTIVE
+    FORMAT: MemcachedResponse;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+TLS: OPTIONAL
+DEFAULT_PORT: 11211

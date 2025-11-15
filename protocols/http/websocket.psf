@@ -1,0 +1,61 @@
+# WebSocket Protocol Signature (RFC 6455)
+# Full-duplex communication over TCP
+
+@SEGMENT.FORMATS
+
+DEFINE WebSocketHandshake
+  { NAME: method        ; TYPE: [u8; 3] },
+  { NAME: space1        ; TYPE: u8 },
+  { NAME: path          ; TYPE: [u8; variable] },
+  { NAME: space2        ; TYPE: u8 },
+  { NAME: version       ; TYPE: [u8; 8] },
+  { NAME: crlf1         ; TYPE: [u8; 2] },
+  { NAME: headers       ; TYPE: [u8; variable] },
+  { NAME: crlf2         ; TYPE: [u8; 2] };
+
+DEFINE WebSocketFrame
+  { NAME: fin           ; TYPE: u1 },
+  { NAME: rsv           ; TYPE: u3 },
+  { NAME: opcode        ; TYPE: u4 },
+  { NAME: mask          ; TYPE: u1 },
+  { NAME: payload_len   ; TYPE: u7 },
+  { NAME: extended_len  ; TYPE: [u8; variable] },
+  { NAME: masking_key   ; TYPE: [u8; 4] },
+  { NAME: payload       ; TYPE: [u8; payload_len.value] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE WebSocketHandshake.method
+  FIXED_VALUE: "GET";
+
+DEFINE WebSocketHandshake.version
+  FIXED_VALUE: "HTTP/1.1";
+
+DEFINE WebSocketFrame.opcode
+  SEMANTIC: FRAME_TYPE
+  VALUES: { CONTINUATION: 0x0, TEXT: 0x1, BINARY: 0x2, CLOSE: 0x8, PING: 0x9, PONG: 0xA };
+
+DEFINE WebSocketFrame.payload_len
+  LENGTH: PAYLOAD_DATA;
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: WebSocketHandshake;
+  PHASE: ACTIVE
+    FORMAT: WebSocketFrame;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: WebSocketHandshake;
+  PHASE: ACTIVE
+    FORMAT: WebSocketFrame;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+UPGRADE_FROM: HTTP
+CIPHER: TLS_OPTIONAL
+DEFAULT_PORT: 80
+SECURE_PORT: 443

@@ -1,0 +1,47 @@
+# MQTT 5.0 Protocol Signature
+# Enhanced Message Queuing Telemetry Transport
+
+@SEGMENT.FORMATS
+
+DEFINE Mqtt5FixedHeader
+  { NAME: msg_type      ; TYPE: u4 },
+  { NAME: flags         ; TYPE: u4 },
+  { NAME: remaining_len ; TYPE: varint };
+
+DEFINE Mqtt5Connect
+  { NAME: fixed_header  ; TYPE: Mqtt5FixedHeader },
+  { NAME: protocol_name ; TYPE: [u8; 6] },
+  { NAME: protocol_ver  ; TYPE: u8 },
+  { NAME: connect_flags ; TYPE: u8 },
+  { NAME: keep_alive    ; TYPE: u16 },
+  { NAME: properties    ; TYPE: [u8; variable] },
+  { NAME: payload       ; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE Mqtt5Connect.protocol_name
+  FIXED_VALUE: "\x00\x04MQTT";
+
+DEFINE Mqtt5Connect.protocol_ver
+  FIXED_VALUE: 5;
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: Mqtt5Connect;
+  PHASE: ACTIVE
+    FORMAT: Mqtt5FixedHeader;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: Mqtt5FixedHeader;
+  PHASE: ACTIVE
+    FORMAT: Mqtt5FixedHeader;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+TLS: OPTIONAL
+DEFAULT_PORT: 1883
+SECURE_PORT: 8883

@@ -1,0 +1,45 @@
+# Telegram MTProto Protocol Signature
+# Mobile Protocol for Telegram
+
+@SEGMENT.FORMATS
+
+DEFINE MtprotoUnencrypted
+  { NAME: auth_key_id   ; TYPE: u64 },
+  { NAME: message_id    ; TYPE: u64 },
+  { NAME: message_length; TYPE: u32 },
+  { NAME: message_data  ; TYPE: [u8; message_length] };
+
+DEFINE MtprotoEncrypted
+  { NAME: auth_key_id   ; TYPE: u64 },
+  { NAME: msg_key       ; TYPE: [u8; 16] },
+  { NAME: encrypted_data; TYPE: [u8; variable] };
+
+@SEGMENT.SEMANTICS
+
+DEFINE MtprotoUnencrypted.auth_key_id
+  FIXED_VALUE: 0;
+
+DEFINE MtprotoEncrypted.auth_key_id
+  SEMANTIC: KEY_ID
+  NOT_EQUAL: 0;
+
+@SEGMENT.SEQUENCE
+
+ROLE: CLIENT
+  PHASE: HANDSHAKE
+    FORMAT: MtprotoUnencrypted;
+  PHASE: ACTIVE
+    FORMAT: MtprotoEncrypted;
+
+ROLE: SERVER
+  PHASE: HANDSHAKE
+    FORMAT: MtprotoUnencrypted;
+  PHASE: ACTIVE
+    FORMAT: MtprotoEncrypted;
+
+@SEGMENT.CRYPTO
+
+TRANSPORT: TCP
+CIPHER: AES_256_IGE
+HASH: SHA256
+DEFAULT_PORT: 443
