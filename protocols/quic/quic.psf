@@ -1,0 +1,34 @@
+// QUIC-like encrypted protocol (RFC 9000)
+// Emulates QUIC short header packets
+// Makes proxy traffic look like QUIC/HTTP3
+
+@SEGMENT.FORMATS
+
+  // QUIC Short Header Packet
+  DEFINE QuicShortHeader
+    { NAME: header_form    ; TYPE: u8 },      // 0x40 = short header
+    { NAME: dest_conn_id   ; TYPE: [u8; 8] }, // Connection ID
+    { NAME: packet_number  ; TYPE: u32 },     // Packet number
+    { NAME: payload_len    ; TYPE: u16 },     // Encrypted payload length
+    { NAME: encrypted_data ; TYPE: [u8; payload_len.size_of] },
+    { NAME: auth_tag       ; TYPE: [u8; 16] }; // AEAD tag
+
+@SEGMENT.SEMANTICS
+
+  { FORMAT: QuicShortHeader; FIELD: header_form;    SEMANTIC: FIXED_VALUE(0x40) };
+  { FORMAT: QuicShortHeader; FIELD: payload_len;    SEMANTIC: LENGTH };
+  { FORMAT: QuicShortHeader; FIELD: encrypted_data; SEMANTIC: PAYLOAD };
+
+@SEGMENT.SEQUENCE
+
+  // Bidirectional QUIC packets
+  { ROLE: CLIENT; PHASE: DATA; FORMAT: QuicShortHeader };
+  { ROLE: SERVER; PHASE: DATA; FORMAT: QuicShortHeader };
+
+@SEGMENT.CRYPTO
+
+  PASSWORD = "nooshdaroo-quic-key";
+  CIPHER   = CHACHA20-POLY1305;
+
+  ENCRYPT QuicShortHeader FROM QuicShortHeader
+    { PTEXT: encrypted_data; CTEXT: encrypted_data; MAC: auth_tag };

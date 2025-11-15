@@ -1,0 +1,38 @@
+# Mobile-Optimized Nooshdaroo Configuration
+# For iOS and Android apps
+
+mode = "client"
+protocol_dir = "protocols"
+
+[encryption]
+cipher = "chacha20-poly1305"
+key_derivation = "argon2"
+password = "your-mobile-password-here"
+
+# Local proxy for mobile apps
+[socks]
+listen_addr = "127.0.0.1:1080"
+auth_required = false
+
+# Adaptive strategy for changing network conditions
+[shapeshift.strategy]
+type = "adaptive"
+switch_threshold = 0.6  # Lower for mobile (faster switching)
+safe_protocols = ["https", "dns"]  # Most common on mobile networks
+normal_protocols = ["quic", "websocket"]  # Modern protocols
+
+# Optimized for mobile networks
+[traffic_shaping]
+enabled = true
+packet_size_distribution = "normal"
+mean_packet_size = 1200  # Smaller for cellular
+stddev_packet_size = 150
+mean_delay = 100  # Higher tolerance for mobile latency
+stddev_delay = 50
+
+# Battery-friendly settings
+[detection]
+enable_fingerprint_randomization = true
+enable_timing_randomization = false  # Disable to save battery
+enable_tls_sni_masking = false
+suspicion_threshold = 0.6

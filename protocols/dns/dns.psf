@@ -1,0 +1,51 @@
+// DNS-like query/response protocol (RFC 1035)
+// Emulates DNS over TCP for encrypted tunneling
+// Makes proxy traffic look like DNS queries and responses
+
+@SEGMENT.FORMATS
+
+  // DNS message header
+  DEFINE DnsHeader
+    { NAME: transaction_id ; TYPE: u16 },     // Random transaction ID
+    { NAME: flags          ; TYPE: u16 },     // Query=0x0100, Response=0x8180
+    { NAME: questions      ; TYPE: u16 },     // Number of questions
+    { NAME: answers        ; TYPE: u16 },     // Number of answers
+    { NAME: authority      ; TYPE: u16 },     // Authority RRs
+    { NAME: additional     ; TYPE: u16 };     // Additional RRs
+
+  // DNS Query (from client)
+  DEFINE DnsQuery
+    { NAME: header         ; TYPE: DnsHeader },
+    { NAME: query_len      ; TYPE: u16 },
+    { NAME: query_data     ; TYPE: [u8; query_len.size_of] },
+    { NAME: mac            ; TYPE: [u8; 16] };
+
+  // DNS Response (from server)
+  DEFINE DnsResponse
+    { NAME: header         ; TYPE: DnsHeader },
+    { NAME: response_len   ; TYPE: u16 },
+    { NAME: response_data  ; TYPE: [u8; response_len.size_of] },
+    { NAME: mac            ; TYPE: [u8; 16] };
+
+@SEGMENT.SEMANTICS
+
+  { FORMAT: DnsQuery;    FIELD: query_len;     SEMANTIC: LENGTH };
+  { FORMAT: DnsQuery;    FIELD: query_data;    SEMANTIC: PAYLOAD };
+  { FORMAT: DnsResponse; FIELD: response_len;  SEMANTIC: LENGTH };
+  { FORMAT: DnsResponse; FIELD: response_data; SEMANTIC: PAYLOAD };
+
+@SEGMENT.SEQUENCE
+
+  { ROLE: CLIENT; PHASE: DATA; FORMAT: DnsQuery };
+  { ROLE: SERVER; PHASE: DATA; FORMAT: DnsResponse };
+
+@SEGMENT.CRYPTO
+
+  PASSWORD = "nooshdaroo-dns-key";
+  CIPHER   = CHACHA20-POLY1305;
+
+  ENCRYPT DnsQuery FROM DnsQuery
+    { PTEXT: query_data; CTEXT: query_data; MAC: mac };
+
+  ENCRYPT DnsResponse FROM DnsResponse
+    { PTEXT: response_data; CTEXT: response_data; MAC: mac };

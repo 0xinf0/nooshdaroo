@@ -1,0 +1,68 @@
+[package]
+name = "nooshdaroo"
+version = "0.1.0"
+edition = "2021"
+authors = ["0xinf0"]
+description = "Protocol Shape-Shifting SOCKS Proxy - Dynamic protocol emulation for encrypted proxy traffic"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+homepage = "https://github.com/0xinf0/Nooshdaroo"
+repository = "https://github.com/0xinf0/Nooshdaroo"
+keywords = ["proxy", "socks", "protocol", "censorship", "obfuscation"]
+categories = ["network-programming", "cryptography", "command-line-utilities"]
+
+[lib]
+name = "nooshdaroo"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nooshdaroo"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.17.0", features = ["macros", "rt", "rt-multi-thread", "io-util", "net", "sync", "time", "fs"] }
+async-trait = "0.1.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_derive = "1.0"
+toml = "0.8"
+
+# Network utilities
+bytes = "1.4.0"
+
+# Logging
+log = "0.4.0"
+env_logger = "0.11"
+
+# Time and randomness
+chrono = "0.4"
+rand = "0.8.5"
+rand_distr = "0.4"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Time parsing
+humantime-serde = "1.1"
+
+# System calls (for transparent proxy)
+libc = "0.2"
+
+# CLI parsing
+clap = { version = "4.5", features = ["derive", "env", "cargo"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 0

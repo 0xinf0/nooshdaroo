@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Nooshdaroo - Protocol Shape-Shifting SOCKS Proxy for bypassing censorship and deep packet inspection">
+    <meta name="keywords" content="proxy, socks5, censorship, DPI, protocol obfuscation, privacy">
+    <title>Nooshdaroo - Protocol Shape-Shifting SOCKS Proxy</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            padding: 3rem 0 2rem;
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .subtitle {
+            font-size: 1.5rem;
+            opacity: 0.95;
+            margin-bottom: 2rem;
+        }
+
+        .hero {
+            background: white;
+            border-radius: 20px;
+            padding: 3rem;
+            margin: 2rem 0;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .tagline {
+            font-size: 1.3rem;
+            color: #555;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin: 3rem 0;
+        }
+
+        .feature {
+            background: #f8f9fa;
+            padding: 2rem;
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+            transition: transform 0.3s ease;
+        }
+
+        .feature:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        .feature h3 {
+            color: #667eea;
+            margin-bottom: 0.5rem;
+            font-size: 1.3rem;
+        }
+
+        .feature p {
+            color: #666;
+            font-size: 0.95rem;
+        }
+
+        .code-section {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 2rem;
+            border-radius: 12px;
+            margin: 2rem 0;
+            overflow-x: auto;
+        }
+
+        .code-section h3 {
+            color: #9cdcfe;
+            margin-bottom: 1rem;
+        }
+
+        code {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.8;
+        }
+
+        .command {
+            color: #ce9178;
+        }
+
+        .comment {
+            color: #6a9955;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            margin: 3rem 0;
+            padding: 2rem;
+            background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+            border-radius: 12px;
+        }
+
+        .stat {
+            text-align: center;
+            padding: 1rem;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #667eea;
+            display: block;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .cta {
+            text-align: center;
+            margin: 3rem 0;
+        }
+
+        .button {
+            display: inline-block;
+            padding: 1rem 3rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            margin: 0.5rem;
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .button.secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        footer {
+            text-align: center;
+            color: white;
+            padding: 2rem 0;
+            opacity: 0.9;
+        }
+
+        .protocol-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+
+        .protocol-tag {
+            background: #667eea15;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 0.9rem;
+            color: #667eea;
+            font-weight: 500;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2.5rem;
+            }
+            .subtitle {
+                font-size: 1.2rem;
+            }
+            .hero {
+                padding: 2rem;
+            }
+            .features {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>نوشداروء Nooshdaroo</h1>
+            <p class="subtitle">Protocol Shape-Shifting SOCKS Proxy</p>
+        </header>
+
+        <div class="hero">
+            <p class="tagline">
+                Disguise your encrypted traffic as 100+ legitimate protocols to bypass deep packet inspection and censorship.
+            </p>
+
+            <div class="stats">
+                <div class="stat">
+                    <span class="stat-number">100+</span>
+                    <span class="stat-label">Protocols</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-number">&lt;5ms</span>
+                    <span class="stat-label">Overhead</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-number">5</span>
+                    <span class="stat-label">Strategies</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-number">Cross-Platform</span>
+                    <span class="stat-label">iOS/Android/Desktop</span>
+                </div>
+            </div>
+
+            <div class="features">
+                <div class="feature">
+                    <h3>🔀 Protocol Shape-Shifting</h3>
+                    <p>Dynamically emulate HTTPS, SSH, DNS, QUIC, WebSocket, and 95+ other protocols to evade detection.</p>
+                </div>
+                <div class="feature">
+                    <h3>🌐 Multiple Proxy Types</h3>
+                    <p>SOCKS5, HTTP CONNECT, and transparent proxy modes. Works with any application.</p>
+                </div>
+                <div class="feature">
+                    <h3>📱 Mobile-Friendly</h3>
+                    <p>Native iOS/Android FFI bindings. Easy integration with React Native and Flutter apps.</p>
+                </div>
+                <div class="feature">
+                    <h3>⚡ High Performance</h3>
+                    <p>Minimal overhead with intelligent traffic shaping and timing emulation.</p>
+                </div>
+                <div class="feature">
+                    <h3>🧠 Adaptive Strategies</h3>
+                    <p>AI-driven protocol selection based on network conditions and detection risk.</p>
+                </div>
+                <div class="feature">
+                    <h3>🔧 Socat-like Relay</h3>
+                    <p>Bidirectional traffic relay mode for versatile deployment scenarios.</p>
+                </div>
+            </div>
+
+            <div class="code-section">
+                <h3>Quick Start</h3>
+                <code>
+<span class="comment"># Install</span><br>
+<span class="command">cargo install nooshdaroo</span><br><br>
+
+<span class="comment"># Run as client (local proxy)</span><br>
+<span class="command">nooshdaroo client --bind 127.0.0.1:1080 --server your-server.com:8443</span><br><br>
+
+<span class="comment"># Configure your app to use SOCKS5 proxy at 127.0.0.1:1080</span><br>
+<span class="command">curl --socks5 127.0.0.1:1080 https://example.com</span><br><br>
+
+<span class="comment"># Run as server (remote endpoint)</span><br>
+<span class="command">nooshdaroo server --bind 0.0.0.0:8443</span>
+                </code>
+            </div>
+
+            <h2 style="text-align: center; color: #667eea; margin: 3rem 0 1rem;">Supported Protocols</h2>
+            <div class="protocol-grid">
+                <div class="protocol-tag">HTTPS</div>
+                <div class="protocol-tag">SSH</div>
+                <div class="protocol-tag">DNS-over-TLS</div>
+                <div class="protocol-tag">WebSocket</div>
+                <div class="protocol-tag">QUIC</div>
+                <div class="protocol-tag">OpenVPN</div>
+                <div class="protocol-tag">WireGuard</div>
+                <div class="protocol-tag">TLS 1.3</div>
+                <div class="protocol-tag">HTTP/2</div>
+                <div class="protocol-tag">HTTP/3</div>
+                <div class="protocol-tag">SMTP-TLS</div>
+                <div class="protocol-tag">IMAP-TLS</div>
+                <div class="protocol-tag">BitTorrent</div>
+                <div class="protocol-tag">RTMP</div>
+                <div class="protocol-tag">MQTT</div>
+                <div class="protocol-tag">... and 85+ more</div>
+            </div>
+
+            <div class="code-section">
+                <h3>Mobile Integration (iOS Swift)</h3>
+                <code>
+<span class="comment">// Import Nooshdaroo</span><br>
+import Nooshdaroo<br><br>
+
+<span class="comment">// Configure and start</span><br>
+let config = NooshdarooMobileConfig()<br>
+config.serverAddress = "your-server.com:8443"<br>
+config.proxyType = "socks5"<br>
+config.protocol = "https"<br><br>
+
+NooshdarooMobile.start(config: config)<br>
+<span class="comment">// All traffic now routes through Nooshdaroo</span>
+                </code>
+            </div>
+
+            <div class="cta">
+                <a href="https://github.com/0xinf0/Nooshdaroo" class="button">View on GitHub</a>
+                <a href="https://github.com/0xinf0/Nooshdaroo/blob/main/NOOSHDAROO_QUICKSTART.md" class="button secondary">Quick Start Guide</a>
+            </div>
+        </div>
+
+        <footer>
+            <p><strong>نوشداروء (Nooshdaroo)</strong> - Persian for "antidote" or "cure"</p>
+            <p style="margin-top: 1rem; opacity: 0.8;">
+                Built on <a href="https://github.com/0xinf0/proteus" style="color: white; text-decoration: underline;">Proteus</a> |
+                Licensed under MIT OR Apache-2.0 |
+                <a href="https://github.com/0xinf0" style="color: white; text-decoration: underline;">@0xinf0</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

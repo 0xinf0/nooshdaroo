@@ -1,0 +1,33 @@
+// TLS 1.3 Application Data (RFC 8446)
+// Pure TLS 1.3 encrypted record
+// Highest fidelity HTTPS emulation
+
+@SEGMENT.FORMATS
+
+  // TLS 1.3 Record
+  DEFINE Tls13Record
+    { NAME: content_type   ; TYPE: u8 },       // 0x17 = application_data
+    { NAME: legacy_version ; TYPE: u16 },      // 0x0303 (TLS 1.2 for compat)
+    { NAME: length         ; TYPE: u16 },      // Fragment length + tag
+    { NAME: encrypted      ; TYPE: [u8; length.size_of] },
+    { NAME: auth_tag       ; TYPE: [u8; 16] }; // AEAD tag
+
+@SEGMENT.SEMANTICS
+
+  { FORMAT: Tls13Record; FIELD: content_type;   SEMANTIC: FIXED_VALUE(0x17) };
+  { FORMAT: Tls13Record; FIELD: legacy_version; SEMANTIC: FIXED_VALUE(0x0303) };
+  { FORMAT: Tls13Record; FIELD: length;         SEMANTIC: LENGTH };
+  { FORMAT: Tls13Record; FIELD: encrypted;      SEMANTIC: PAYLOAD };
+
+@SEGMENT.SEQUENCE
+
+  { ROLE: CLIENT; PHASE: DATA; FORMAT: Tls13Record };
+  { ROLE: SERVER; PHASE: DATA; FORMAT: Tls13Record };
+
+@SEGMENT.CRYPTO
+
+  PASSWORD = "nooshdaroo-tls13-key";
+  CIPHER   = CHACHA20-POLY1305;
+
+  ENCRYPT Tls13Record FROM Tls13Record
+    { PTEXT: encrypted; CTEXT: encrypted; MAC: auth_tag };

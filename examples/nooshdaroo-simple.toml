@@ -1,0 +1,24 @@
+# Simple Nooshdaroo Configuration
+# Quick start for most users
+
+mode = "client"
+protocol_dir = "protocols"
+
+[encryption]
+cipher = "chacha20-poly1305"
+key_derivation = "argon2"
+password = "change-me-to-secure-password"
+
+# SOCKS5 proxy on localhost
+[socks]
+listen_addr = "127.0.0.1:1080"
+auth_required = false
+
+# Fixed HTTPS protocol (safest, most common)
+[shapeshift.strategy]
+type = "fixed"
+protocol = "https"
+
+# Disable traffic shaping for better performance
+[traffic_shaping]
+enabled = false

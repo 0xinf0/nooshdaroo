@@ -1,0 +1,34 @@
+// SSH-like encrypted protocol (RFC 4253)
+// Emulates SSH binary packet protocol
+// Makes proxy traffic look like SSH encrypted session
+
+@SEGMENT.FORMATS
+
+  // SSH Binary Packet
+  DEFINE SshPacket
+    { NAME: packet_length  ; TYPE: u32 },     // Packet length (excluding MAC)
+    { NAME: padding_length ; TYPE: u8 },      // Padding length
+    { NAME: payload_len    ; TYPE: u16 },     // Actual payload length
+    { NAME: payload        ; TYPE: [u8; payload_len.size_of] },
+    { NAME: padding        ; TYPE: [u8; padding_length.size_of] },
+    { NAME: mac            ; TYPE: [u8; 16] }; // HMAC
+
+@SEGMENT.SEMANTICS
+
+  { FORMAT: SshPacket; FIELD: payload_len; SEMANTIC: LENGTH };
+  { FORMAT: SshPacket; FIELD: payload;     SEMANTIC: PAYLOAD };
+  { FORMAT: SshPacket; FIELD: padding;     SEMANTIC: PADDING };
+
+@SEGMENT.SEQUENCE
+
+  // Bidirectional encrypted packets
+  { ROLE: CLIENT; PHASE: DATA; FORMAT: SshPacket };
+  { ROLE: SERVER; PHASE: DATA; FORMAT: SshPacket };
+
+@SEGMENT.CRYPTO
+
+  PASSWORD = "nooshdaroo-ssh-key";
+  CIPHER   = CHACHA20-POLY1305;
+
+  ENCRYPT SshPacket FROM SshPacket
+    { PTEXT: payload; CTEXT: payload; MAC: mac };
