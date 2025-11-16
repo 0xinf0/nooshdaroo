@@ -2,13 +2,15 @@
 
 use super::config::{DistributionType, TrafficShapingConfig};
 use rand::distributions::Distribution;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use rand_distr::{Exp, Normal, Uniform};
 use std::time::Duration;
 
 /// Traffic shaper for realistic traffic patterns
 pub struct TrafficShaper {
     config: TrafficShapingConfig,
-    rng: rand::rngs::ThreadRng,
+    rng: StdRng,
 }
 
 impl TrafficShaper {
@@ -16,7 +18,7 @@ impl TrafficShaper {
     pub fn new(config: TrafficShapingConfig) -> Self {
         Self {
             config,
-            rng: rand::thread_rng(),
+            rng: StdRng::from_entropy(),
         }
     }
 

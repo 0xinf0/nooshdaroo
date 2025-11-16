@@ -113,6 +113,9 @@ pub struct SocksConfig {
     /// Listen address for SOCKS5 server
     pub listen_addr: SocketAddr,
 
+    /// Remote server address for tunneling (client mode)
+    pub server_address: Option<String>,
+
     /// Require authentication
     pub auth_required: bool,
 
@@ -127,6 +130,7 @@ impl Default for SocksConfig {
     fn default() -> Self {
         Self {
             listen_addr: "127.0.0.1:1080".parse().unwrap(),
+            server_address: None,
             auth_required: false,
             username: None,
             password: None,

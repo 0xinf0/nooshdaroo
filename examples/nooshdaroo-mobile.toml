@@ -12,6 +12,7 @@ password = "your-mobile-password-here"
 # Local proxy for mobile apps
 [socks]
 listen_addr = "127.0.0.1:1080"
+server_address = "your-server.com:8443"  # Required for tunnel mode
 auth_required = false
 
 # Adaptive strategy for changing network conditions

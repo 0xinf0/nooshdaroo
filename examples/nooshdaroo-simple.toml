@@ -12,6 +12,7 @@ password = "change-me-to-secure-password"
 # SOCKS5 proxy on localhost
 [socks]
 listen_addr = "127.0.0.1:1080"
+server_address = "your-server.com:8443"  # Required for tunnel mode
 auth_required = false
 
 # Fixed HTTPS protocol (safest, most common)

@@ -404,6 +404,45 @@ impl NoiseTransport {
         Ok(())
     }
 
+    /// Encrypt data and return raw Noise-encrypted bytes (for use with protocol wrapper)
+    /// Returns the encrypted data without length prefix
+    pub fn encrypt(&mut self, data: &[u8]) -> Result<Vec<u8>> {
+        if data.len() > MAX_MESSAGE_SIZE {
+            return Err(anyhow!("Message too large: {} > {}", data.len(), MAX_MESSAGE_SIZE));
+        }
+
+        let len = self.transport.write_message(data, &mut self.write_buffer)?;
+        Ok(self.write_buffer[..len].to_vec())
+    }
+
+    /// Decrypt raw Noise-encrypted bytes (for use with protocol wrapper)
+    /// Takes the encrypted data without length prefix
+    pub fn decrypt(&mut self, encrypted: &[u8]) -> Result<Vec<u8>> {
+        if encrypted.len() > self.read_buffer.len() {
+            return Err(anyhow!("Encrypted data too large: {} > {}", encrypted.len(), self.read_buffer.len()));
+        }
+
+        let len = self.transport.read_message(encrypted, &mut self.write_buffer)?;
+        Ok(self.write_buffer[..len].to_vec())
+    }
+
+    /// Write raw bytes to stream with length prefix (for protocol wrapper)
+    pub async fn write_raw<S>(&self, stream: &mut S, data: &[u8]) -> Result<()>
+    where
+        S: AsyncWrite + Unpin,
+    {
+        Self::write_message(stream, data).await
+    }
+
+    /// Read raw bytes from stream with length prefix (for protocol wrapper)
+    pub async fn read_raw<S>(&mut self, stream: &mut S) -> Result<Vec<u8>>
+    where
+        S: AsyncRead + Unpin,
+    {
+        let data = Self::read_message(stream, &mut self.read_buffer).await?;
+        Ok(data.to_vec())
+    }
+
     /// Check if transport is in valid state
     pub fn is_valid(&self) -> bool {
         true // TransportState is always valid after handshake
