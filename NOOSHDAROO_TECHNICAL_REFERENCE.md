@@ -35,7 +35,7 @@ Nooshdaroo (نوشدارو, Persian for "antidote") is a sophisticated proxy sys
 **Key Capabilities:**
 - Emulates 121 network protocols across 16 categories
 - Encrypted transport using Noise Protocol Framework
-- Multiple proxy modes (SOCKS5, HTTP CONNECT, Transparent)
+- Multiple proxy modes (SOCKS5, HTTP CONNECT)
 - Adaptive traffic shaping with application profiles
 - Cross-platform support (Linux, macOS, Windows, with mobile foundations)
 
@@ -69,14 +69,14 @@ Nooshdaroo builds on the [Proteus project](https://github.com/unblockable/proteu
 │                      Application Layer                          │
 │  (Browser, SSH Client, Database Client, VoIP Apps, etc.)       │
 └─────────────────────────┬──────────────────────────────────────┘
-                          │ SOCKS5/HTTP/Transparent
+                          │ SOCKS5/HTTP CONNECT
 ┌─────────────────────────▼──────────────────────────────────────┐
 │                    Nooshdaroo Client                            │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
 │  │ Proxy Engine │  │ Traffic      │  │ Bandwidth    │         │
 │  │ - SOCKS5     │  │ Shaper       │  │ Optimizer    │         │
 │  │ - HTTP       │  │ - Profiles   │  │ - Quality    │         │
-│  │ - Transparent│  │   (6 apps)   │  │   Tiers      │         │
+│  │   CONNECT    │  │   (6 apps)   │  │   Tiers      │         │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘         │
 │         └──────────────────┴──────────────────┘                 │
 │                            │                                    │
@@ -231,30 +231,6 @@ type = "http"
 ```bash
 nooshdaroo client --bind 127.0.0.1:8080 --server server.com:8443 --proxy-type http
 curl --proxy http://127.0.0.1:8080 https://example.com
-```
-
-#### Transparent Proxy
-- Linux iptables integration
-- System-wide traffic redirection
-- Requires root/CAP_NET_ADMIN
-
-**Configuration:**
-```toml
-[socks]
-listen_addr = "127.0.0.1:1080"
-server_address = "server.example.com:8443"
-
-[proxy]
-type = "transparent"
-```
-
-**Usage:**
-```bash
-# Requires root
-sudo nooshdaroo client --bind 127.0.0.1:1080 --server server.com:8443 --proxy-type transparent
-
-# Redirect all TCP traffic
-sudo iptables -t nat -A OUTPUT -p tcp -j REDIRECT --to-ports 1080
 ```
 
 ### 3.2 Shape-Shifting Controller
@@ -1416,7 +1392,7 @@ typedef struct {
     const char* server_addr;
     const char* password;
     const char* protocol;
-    int proxy_type;  // 0=SOCKS5, 1=HTTP, 2=Transparent
+    int proxy_type;  // 0=SOCKS5, 1=HTTP
     int enable_shapeshift;
     int shapeshift_strategy;  // 0=static, 1=time, 2=random, 3=traffic, 4=adaptive
 } NooshdarooMobileConfig;
@@ -1498,7 +1474,7 @@ bind_address = "127.0.0.1:1080"
 # Remote server address (enables tunnel mode)
 server_address = "server.example.com:8443"
 
-# Proxy type: socks5, http, transparent
+# Proxy type: socks5, http
 proxy_type = "socks5"
 
 # ─────────────────────────────────────────────────────────
@@ -1735,7 +1711,7 @@ nooshdaroo client --help
 Options:
   -b, --bind <BIND>              Local bind address [default: 127.0.0.1:1080]
   -s, --server <SERVER>          Remote server address
-  -p, --proxy-type <PROXY_TYPE>  Proxy type (socks5, http, transparent) [default: socks5]
+  -p, --proxy-type <PROXY_TYPE>  Proxy type (socks5, http) [default: socks5]
       --protocol <PROTOCOL>      Protocol override (https, dns, ssh, etc.)
       --port <PORT>              Server port override
       --profile <PROFILE>        Preset profile (corporate, airport, hotel, china, iran, russia)
@@ -1970,7 +1946,7 @@ Total Capacity: 1,500 concurrent users
 **Protocol Mixing Strategies:**
 - **Status:** Partially implemented
 - **Missing:** DualRandom, MultiTemporal, VolumeAdaptive, AdaptiveLearning
-- **Documented in:** NETFLOW_EVASION.md, SWISS_ARMY_KNIFE.md
+- **Documented in:** NETFLOW_EVASION.md (deleted - contained fabricated content)
 - **Impact:** Would improve resistance to statistical traffic analysis
 
 **Mobile FFI Bindings:**
@@ -1993,6 +1969,13 @@ Total Capacity: 1,500 concurrent users
 - **Status:** Not implemented
 - **Documented in:** ADVANCED_TRAFFIC_SHAPING.md
 - **Impact:** Would enable pre-emptive quality adjustments
+
+**Transparent Proxy Mode:**
+- **Status:** Stub only in `src/proxy.rs` (handle_transparent function with TODO)
+- **Missing:** Platform-specific implementations (Linux iptables/nftables, Windows WFP, macOS PF)
+- **Documented in:** Previous versions of documentation
+- **Impact:** Would enable system-wide traffic redirection without application configuration
+- **Note:** Requires kernel-level integration or OS-specific networking frameworks
 
 ### 12.2 Planned Enhancements
 

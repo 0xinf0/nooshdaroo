@@ -32,13 +32,12 @@
 
 The following files were merged into the technical reference:
 
-### Core Documentation (7 files)
+### Core Documentation (6 files)
 1. **NOOSHDAROO_DESIGN.md** - Architecture and design philosophy
 2. **WHITEPAPER.md** - Academic/technical whitepaper
-3. **SWISS_ARMY_KNIFE.md** - Multi-function capabilities
-4. **NOOSHDAROO_README.md** - Comprehensive feature documentation
-5. **README.md** - Main project readme
-6. **FEATURES_SUMMARY.md** - Feature overview
+3. **NOOSHDAROO_README.md** - Comprehensive feature documentation
+4. **README.md** - Main project readme
+5. **FEATURES_SUMMARY.md** - Feature overview
 
 ### Feature-Specific Documentation (6 files)
 7. **NOOSHDAROO_MOBILE.md** - Mobile integration guide
@@ -71,7 +70,6 @@ After reviewing NOOSHDAROO_TECHNICAL_REFERENCE.md, you can safely delete:
 ```bash
 rm NOOSHDAROO_DESIGN.md
 rm WHITEPAPER.md
-rm SWISS_ARMY_KNIFE.md
 rm NOOSHDAROO_README.md
 rm FEATURES_SUMMARY.md
 rm NOOSHDAROO_MOBILE.md

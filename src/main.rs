@@ -50,7 +50,7 @@ enum Commands {
         #[arg(short, long)]
         server: Option<String>,
 
-        /// Proxy type (socks5, http, transparent)
+        /// Proxy type (socks5, http)
         #[arg(short = 'p', long, default_value = "socks5")]
         proxy_type: String,
 

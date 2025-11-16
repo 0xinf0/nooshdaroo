@@ -70,7 +70,7 @@ Available profiles: `corporate`, `airport`, `hotel`, `china`, `iran`, `russia`
 ### Core Capabilities
 - **121 Protocol Emulations**: HTTPS, DNS, SSH, QUIC, WebSocket, gaming protocols, database protocols, and more
 - **Noise Protocol Encryption**: ChaCha20-Poly1305 AEAD with X25519 key exchange (forward secrecy)
-- **Multiple Proxy Modes**: SOCKS5, HTTP CONNECT, Transparent proxy
+- **Multiple Proxy Modes**: SOCKS5, HTTP CONNECT
 - **Traffic Shaping**: Emulate real applications (Zoom, Netflix, YouTube, Microsoft Teams, WhatsApp)
 - **Adaptive Bandwidth**: Automatic quality adjustment based on network conditions (4 quality tiers)
 - **Preset Profiles**: 6 environment-specific configurations for different censorship scenarios
@@ -92,7 +92,7 @@ Available profiles: `corporate`, `airport`, `hotel`, `china`, `iran`, `russia`
 ┌──────────────┐
 │ Application  │  curl, browser, ssh, etc.
 └──────┬───────┘
-       │ SOCKS5/HTTP/Transparent
+       │ SOCKS5/HTTP CONNECT
 ┌──────▼───────────────────────────────────────┐
 │  Nooshdaroo Client                           │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐     │
@@ -140,7 +140,6 @@ Available profiles: `corporate`, `airport`, `hotel`, `china`, `iran`, `russia`
 
 - **[NOOSHDAROO_TECHNICAL_REFERENCE.md](NOOSHDAROO_TECHNICAL_REFERENCE.md)** - Complete technical documentation
 - **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Command cheatsheet
-- **[SWISS_ARMY_KNIFE.md](SWISS_ARMY_KNIFE.md)** - Multi-function capabilities guide
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
 

@@ -63,9 +63,6 @@ nooshdaroo client --config client.toml
 # HTTP proxy mode
 nooshdaroo client --bind 127.0.0.1:8080 --server myserver.com:8443 --proxy-type http
 
-# Transparent proxy (requires root)
-sudo nooshdaroo client --bind 127.0.0.1:1080 --server myserver.com:8443 --proxy-type transparent
-
 # Using preset profiles
 nooshdaroo client --profile china --server myserver.com:8443
 nooshdaroo client --profile airport --server myserver.com:8443
