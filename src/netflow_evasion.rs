@@ -18,7 +18,7 @@ use tokio::net::TcpStream;
 use tokio::time::timeout;
 
 /// Connection path test result
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PathTestResult {
     /// Server address and port tested
     pub addr: SocketAddr,

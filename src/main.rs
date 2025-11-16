@@ -51,8 +51,24 @@ enum Commands {
         server: Option<String>,
 
         /// Proxy type (socks5, http, transparent)
-        #[arg(short, long, default_value = "socks5")]
+        #[arg(short = 'p', long, default_value = "socks5")]
         proxy_type: String,
+
+        /// Protocol to use (https, dns, ssh, etc.) - overrides config file
+        #[arg(long)]
+        protocol: Option<String>,
+
+        /// Server port override
+        #[arg(long)]
+        port: Option<u16>,
+
+        /// Use preset profile (corporate, airport, hotel, china, iran, russia)
+        #[arg(long, value_parser = ["corporate", "airport", "hotel", "china", "iran", "russia"])]
+        profile: Option<String>,
+
+        /// Automatically select best protocol by testing all paths
+        #[arg(long)]
+        auto_protocol: bool,
     },
 
     /// Run as a server (remote endpoint)
@@ -60,6 +76,14 @@ enum Commands {
         /// Server bind address
         #[arg(short, long, default_value = "0.0.0.0:8443")]
         bind: String,
+
+        /// Listen on multiple ports simultaneously (443, 53, 22, 80, 8080, etc.)
+        #[arg(long)]
+        multi_port: bool,
+
+        /// Maximum number of ports to listen on (when --multi-port is enabled)
+        #[arg(long, default_value = "20")]
+        max_ports: usize,
     },
 
     /// Run in socat/relay mode
@@ -124,6 +148,21 @@ enum Commands {
         #[arg(long, default_value = "nk")]
         pattern: String,
     },
+
+    /// Test all protocol/port combinations to find best path
+    TestPaths {
+        /// Server address to test
+        #[arg(short, long)]
+        server: String,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Protocol directory
+        #[arg(long, default_value = "protocols")]
+        protocol_dir: PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -162,11 +201,29 @@ async fn main() -> Result<()> {
             bind,
             server,
             proxy_type,
+            protocol,
+            port,
+            profile,
+            auto_protocol,
         } => {
-            run_client(cli.config, &bind, server.as_deref(), &proxy_type).await?;
+            run_client(
+                cli.config,
+                &bind,
+                server.as_deref(),
+                &proxy_type,
+                protocol.as_deref(),
+                port,
+                profile.as_deref(),
+                auto_protocol,
+            )
+            .await?;
         }
-        Commands::Server { bind } => {
-            run_server(cli.config, &bind).await?;
+        Commands::Server {
+            bind,
+            multi_port,
+            max_ports,
+        } => {
+            run_server(cli.config, &bind, multi_port, max_ports).await?;
         }
         Commands::Relay {
             listen,
@@ -201,6 +258,13 @@ async fn main() -> Result<()> {
                 &pattern,
             )?;
         }
+        Commands::TestPaths {
+            server,
+            format,
+            protocol_dir,
+        } => {
+            test_all_paths(&server, &format, &protocol_dir).await?;
+        }
     }
 
     Ok(())
@@ -211,10 +275,18 @@ async fn run_client(
     bind: &str,
     server: Option<&str>,
     proxy_type: &str,
+    protocol: Option<&str>,
+    port: Option<u16>,
+    profile: Option<&str>,
+    auto_protocol: bool,
 ) -> Result<()> {
     info!("Starting Nooshdaroo client on {}", bind);
 
-    let config = if let Some(ref path) = config_path {
+    // Load config from profile, config file, or default (in priority order)
+    let mut config = if let Some(profile_name) = profile {
+        info!("Loading preset profile: {}", profile_name);
+        nooshdaroo::profiles::load_profile(profile_name)?
+    } else if let Some(ref path) = config_path {
         NooshdarooConfig::from_file(path)?
     } else {
         NooshdarooConfig::default()
@@ -253,14 +325,52 @@ async fn run_client(
     };
 
     // Parse server address
-    let server_addr: SocketAddr = server_addr_str.parse()
+    let mut server_addr: SocketAddr = server_addr_str.parse()
         .context(format!("Invalid server address: {}", server_addr_str))?;
+
+    // Apply port override if specified
+    if let Some(port_override) = port {
+        info!("Overriding server port from CLI: {}", port_override);
+        server_addr.set_port(port_override);
+    }
 
     info!("Server address: {}", server_addr);
 
-    // Get current protocol from client
-    let protocol_id = client.current_protocol().await;
-    info!("Current protocol: {}", protocol_id.as_str());
+    // Determine protocol: auto-select, CLI override, or config
+    let protocol_id = if auto_protocol {
+        info!("Auto-protocol mode: testing all paths to find best connection...");
+        // Use PathTester to find best protocol
+        let library = Arc::new(nooshdaroo::ProtocolLibrary::load(&PathBuf::from("protocols"))?);
+        let tester = nooshdaroo::PathTester::new(library);
+        let test_config = nooshdaroo::MultiPortConfig::default();
+
+        let results = tester.test_all_paths(&server_addr.ip().to_string(), &test_config).await;
+
+        if results.is_empty() {
+            warn!("No successful paths found, using default protocol");
+            client.current_protocol().await
+        } else {
+            // Pick the best scoring protocol
+            let best = &results[0];
+            info!(
+                "Auto-selected protocol: {} on port {} (score: {:.2})",
+                best.protocol.as_str(),
+                best.addr.port(),
+                best.score()
+            );
+            // Update server port to the best one found
+            server_addr.set_port(best.addr.port());
+            best.protocol.clone()
+        }
+    } else if let Some(proto_name) = protocol {
+        info!("Using protocol from CLI: {}", proto_name);
+        nooshdaroo::ProtocolId::from(proto_name)
+    } else {
+        // Use protocol from client config
+        let proto = client.current_protocol().await;
+        info!("Current protocol: {}", proto.as_str());
+        proto
+    };
 
     // Create listener with or without tunneling
     let listener = if let Some(noise_config) = config.transport {
@@ -285,7 +395,12 @@ async fn run_client(
     Ok(())
 }
 
-async fn run_server(config_path: Option<PathBuf>, bind: &str) -> Result<()> {
+async fn run_server(
+    config_path: Option<PathBuf>,
+    bind: &str,
+    multi_port: bool,
+    max_ports: usize,
+) -> Result<()> {
     info!("Starting Nooshdaroo server on {}", bind);
 
     let config = if let Some(path) = config_path {
@@ -294,6 +409,33 @@ async fn run_server(config_path: Option<PathBuf>, bind: &str) -> Result<()> {
         NooshdarooConfig::default()
     };
 
+    // If multi-port mode is enabled, use MultiPortServer
+    if multi_port {
+        info!("Multi-port mode enabled - listening on up to {} ports", max_ports);
+        let library = Arc::new(nooshdaroo::ProtocolLibrary::load(&PathBuf::from("protocols"))?);
+
+        let mp_config = nooshdaroo::MultiPortConfig {
+            max_ports,
+            ..Default::default()
+        };
+
+        let mp_server = nooshdaroo::MultiPortServer::new(library, mp_config);
+        mp_server.initialize().await.map_err(|e| anyhow::anyhow!("{}", e))?;
+
+        info!("Multi-port server initialized on:");
+        info!("  HTTPS: 443, 8443");
+        info!("  DNS: 53");
+        info!("  SSH: 22, 2222");
+        info!("  HTTP: 80, 8080, 8000");
+        info!("  VPN: 1194, 51820");
+        info!("  Email: 25, 587, 993, 995");
+
+        mp_server.start().await.map_err(|e| anyhow::anyhow!("{}", e))?;
+
+        return Ok(());
+    }
+
+    // Single-port mode (original implementation)
     let server = NooshdarooServer::new(config.clone())?;
 
     // Extract noise config for tunnel decryption
@@ -722,6 +864,69 @@ initial_quality = "high"
             println!("   Client: nooshdaroo client --config {:?}", path);
         }
         println!();
+    }
+
+    Ok(())
+}
+
+/// Test all protocol/port combinations to find best path
+async fn test_all_paths(server: &str, format: &str, protocol_dir: &PathBuf) -> Result<()> {
+    info!("Testing all paths to {}...", server);
+
+    // Load protocol library
+    let library = Arc::new(nooshdaroo::ProtocolLibrary::load(protocol_dir)?);
+    let tester = nooshdaroo::PathTester::new(library);
+    let config = nooshdaroo::MultiPortConfig::default();
+
+    // Run tests
+    let results = tester.test_all_paths(server, &config).await;
+
+    if results.is_empty() {
+        warn!("No successful paths found!");
+        return Ok(());
+    }
+
+    // Output results
+    if format == "json" {
+        // JSON output
+        let json_output = serde_json::to_string_pretty(&results)?;
+        println!("{}", json_output);
+    } else {
+        // Text output
+        println!("\n🔍 Testing paths to {}...\n", server);
+        println!("{:<15} {:<8} {:<12} {:<10} {:<10} {}",
+            "PROTOCOL", "PORT", "LATENCY", "SCORE", "STATUS", "NOTES");
+        println!("{}", "-".repeat(80));
+
+        for result in &results {
+            let status = if result.success { "✓ OK" } else { "✗ FAIL" };
+            let latency_ms = format!("{:.2}ms", result.latency.as_secs_f64() * 1000.0);
+            let score = format!("{:.2}", result.score());
+
+            println!("{:<15} {:<8} {:<12} {:<10} {:<10}",
+                result.protocol.as_str(),
+                result.addr.port(),
+                latency_ms,
+                score,
+                status
+            );
+        }
+
+        println!("\n📊 SUMMARY:");
+        let successful = results.iter().filter(|r| r.success).count();
+        let total = results.len();
+        println!("  Successful paths: {}/{}", successful, total);
+
+        if successful > 0 {
+            let best = &results[0];
+            println!("\n🏆 RECOMMENDED:");
+            println!("  Protocol: {}", best.protocol.as_str());
+            println!("  Port: {}", best.addr.port());
+            println!("  Score: {:.2}/1.00", best.score());
+            println!("\n💡 To use this path:");
+            println!("  nooshdaroo client --protocol {} --port {} --server {}",
+                best.protocol.as_str(), best.addr.port(), server);
+        }
     }
 
     Ok(())

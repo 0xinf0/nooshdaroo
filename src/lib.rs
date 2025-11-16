@@ -74,14 +74,18 @@ pub mod mobile;
 pub mod multiport_server;
 pub mod netflow_evasion;
 pub mod noise_transport;
+pub mod profiles;
 pub mod protocol;
 pub mod proxy;
+pub mod psf;
 pub mod shapeshift;
+pub mod socks5;
 pub mod socat;
 pub mod strategy;
 pub mod traceroute;
 pub mod traffic;
 pub mod udp_proxy;
+pub mod protocol_wrapper;
 
 // Re-export core types
 pub use app_profiles::{ApplicationEmulator, ApplicationProfile, AppCategory};
@@ -97,11 +101,15 @@ pub use noise_transport::{
     NoiseTransport,
 };
 pub use protocol::{DetectionScore, ProtocolId, ProtocolMeta, Transport};
+pub use protocol_wrapper::ProtocolWrapper;
 pub use proxy::{HttpProxyServer, ProxyType, UnifiedProxyListener};
+pub use psf::{PsfInterpreter, ProtocolFrame};
 pub use shapeshift::ShapeShiftController;
 pub use socat::{Bidirectional, ClientToServer, RelayMode, ServerToClient, SocatBuilder, SocatRelay};
 pub use strategy::{ShapeShiftStrategy, StrategyType};
 pub use udp_proxy::{SimpleUdpForwarder, UdpProxyServer};
+pub use multiport_server::MultiPortServer;
+pub use netflow_evasion::{PathTester, MultiPortConfig};
 
 use std::sync::Arc;
 use tokio::sync::RwLock;

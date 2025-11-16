@@ -76,7 +76,7 @@ nooshdaroo server --multi-port
 **Solution**: Test everything, pick the best
 
 ```bash
-nooshdaroo client --test-all-paths --server example.com
+nooshdaroo test-paths --server example.com
 
 # Tests 10-20 combinations:
 # example.com:443 (https)    -> Score: 0.87 ✓
@@ -396,11 +396,9 @@ nooshdaroo client \
 **Nooshdaroo Solution:**
 ```bash
 nooshdaroo client \
-  --test-all-paths \
-  --mix adaptive-learning \
-  --traffic-shaping \
-  --enable-decoy-traffic \
-  --json-logging
+  --auto-protocol \
+  --profile china \
+  --server your-vps.com
 
 # Result: Automatically finds best path, adapts over time
 ```
@@ -541,11 +539,8 @@ nooshdaroo server \
 ```bash
 nooshdaroo client \
   --server your-vps.com \
-  --test-all-paths \
-  --mix dual-random \
-  --traffic-shaping \
-  --traceroute \
-  --json-logging | tee client.log
+  --auto-protocol \
+  --profile china
 ```
 
 ### 3. Mobile App Integration
@@ -652,23 +647,6 @@ NooshdarooMobile.onEvent { event in
 - Clear metrics
 - Easy debugging
 - Comprehensive documentation
-
-## Real-World Results
-
-> *"Nooshdaroo got through the Great Firewall when nothing else would."*
-> — User in Beijing
-
-> *"Works perfectly in Iran. DNS fallback is a lifesaver."*
-> — Journalist in Tehran
-
-> *"My corporate firewall doesn't even notice it."*
-> — Remote worker
-
-> *"Battery life is amazing compared to other VPNs."*
-> — Mobile user
-
-> *"The Swiss Army knife description is accurate."*
-> — Security researcher
 
 ## Limitations & Disclaimers
 
