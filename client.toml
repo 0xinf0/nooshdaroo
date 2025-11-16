@@ -1,13 +1,20 @@
-[client]
-bind_address = "127.0.0.1:1080"
+mode = "client"
+protocol_dir = "protocols"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+password = "nooshdaroo-client-secret"
+
+[socks]
+listen_addr = "127.0.0.1:1080"
 server_address = "23.128.36.42:8443"
+auth_required = false
+
+[shapeshift.strategy]
+type = "fixed"
+protocol = "dns"
 
 [transport]
 pattern = "nk"
 remote_public_key = "0SFi6DDPeASU6HWjafauihAFd7RJLAbuDFiVs9r4cQs="
-
-[shaping]
-enabled = true
-
-[protocols]
-directory = "protocols"

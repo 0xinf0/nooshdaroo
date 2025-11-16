@@ -1,13 +1,16 @@
 //! Multi-protocol proxy servers (HTTP, SOCKS, Transparent)
 
-use bytes::{Buf, BufMut, BytesMut};
-use std::mem;
+use bytes::BytesMut;
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use crate::noise_transport::NoiseTransport;
 
 #[cfg(target_os = "linux")]
 use std::os::unix::io::AsRawFd;
+
+#[cfg(target_os = "linux")]
+use std::mem;
 
 /// Proxy type enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,15 +29,28 @@ pub enum ProxyType {
 pub struct UnifiedProxyListener {
     listen_addr: SocketAddr,
     proxy_types: Vec<ProxyType>,
+    server_addr: Option<SocketAddr>,
+    noise_config: Option<crate::noise_transport::NoiseConfig>,
+    protocol_id: crate::ProtocolId,
 }
 
 impl UnifiedProxyListener {
     /// Create new unified proxy listener
-    pub fn new(listen_addr: SocketAddr, proxy_types: Vec<ProxyType>) -> Self {
+    pub fn new(listen_addr: SocketAddr, proxy_types: Vec<ProxyType>, protocol_id: crate::ProtocolId) -> Self {
         Self {
             listen_addr,
             proxy_types,
+            server_addr: None,
+            noise_config: None,
+            protocol_id,
         }
+    }
+
+    /// Set server address for tunneling mode
+    pub fn with_server(mut self, addr: SocketAddr, noise_config: crate::noise_transport::NoiseConfig) -> Self {
+        self.server_addr = Some(addr);
+        self.noise_config = Some(noise_config);
+        self
     }
 
     /// Start listening and accept connections
@@ -47,8 +63,12 @@ impl UnifiedProxyListener {
             log::debug!("Accepted connection from {}", peer_addr);
 
             let proxy_types = self.proxy_types.clone();
+            let server_addr = self.server_addr;
+            let noise_config = self.noise_config.clone();
+            let protocol_id = self.protocol_id.clone();
+
             tokio::spawn(async move {
-                if let Err(e) = handle_connection(socket, peer_addr, proxy_types).await {
+                if let Err(e) = handle_connection(socket, peer_addr, proxy_types, server_addr, noise_config, protocol_id).await {
                     log::error!("Connection error from {}: {}", peer_addr, e);
                 }
             });
@@ -61,6 +81,9 @@ async fn handle_connection(
     socket: TcpStream,
     peer_addr: SocketAddr,
     supported_types: Vec<ProxyType>,
+    server_addr: Option<SocketAddr>,
+    noise_config: Option<crate::noise_transport::NoiseConfig>,
+    protocol_id: crate::ProtocolId,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Peek at first bytes to detect protocol
     let mut buf = BytesMut::with_capacity(4096);
@@ -76,7 +99,7 @@ async fn handle_connection(
     log::debug!("Detected {:?} proxy from {}", proxy_type, peer_addr);
 
     match proxy_type {
-        ProxyType::Socks5 => handle_socks5(socket, buf, peer_addr).await,
+        ProxyType::Socks5 => handle_socks5(socket, buf, peer_addr, server_addr, noise_config, protocol_id).await,
         ProxyType::Http => handle_http(socket, buf, peer_addr).await,
         ProxyType::Transparent => handle_transparent(socket, buf, peer_addr).await,
     }
@@ -117,14 +140,227 @@ fn detect_proxy_type(
     Err("Unable to detect supported proxy protocol".into())
 }
 
-/// Handle SOCKS5 proxy connection
+/// Handle SOCKS5 proxy connection with complete RFC 1928 implementation
 async fn handle_socks5(
-    _socket: TcpStream,
-    _buf: BytesMut,
-    _peer_addr: SocketAddr,
+    socket: TcpStream,
+    buf: BytesMut,
+    peer_addr: SocketAddr,
+    server_addr: Option<SocketAddr>,
+    noise_config: Option<crate::noise_transport::NoiseConfig>,
+    protocol_id: crate::ProtocolId,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO: Integrate with existing Proteus SOCKS5 implementation
-    log::info!("SOCKS5 handler - integration pending");
+    use crate::socks5::{socks5_handshake, connect_target, send_reply, copy_bidirectional, Command, ReplyCode, PrefixedStream};
+    use crate::noise_transport::NoiseTransport;
+
+    log::debug!("SOCKS5 connection from {}", peer_addr);
+
+    // Wrap socket with already-read data
+    let mut socket = PrefixedStream::new(socket, buf);
+
+    // Perform complete SOCKS5 handshake
+    let (command, target) = match socks5_handshake(&mut socket).await {
+        Ok(result) => result,
+        Err(e) => {
+            log::error!("SOCKS5 handshake failed from {}: {}", peer_addr, e);
+            return Err(e.into());
+        }
+    };
+
+    log::info!("SOCKS5 {:?} request to {}:{} from {}", command, target.host, target.port, peer_addr);
+
+    match command {
+        Command::Connect => {
+            // Check if we should tunnel through server or connect directly
+            if let (Some(server_addr), Some(noise_config)) = (server_addr, noise_config) {
+                // TUNNEL MODE: Connect to server via Noise encryption
+                log::info!("Tunneling to {}:{} via server {}", target.host, target.port, server_addr);
+
+                // Connect to server
+                let mut server_stream = match TcpStream::connect(server_addr).await {
+                    Ok(stream) => {
+                        log::debug!("Connected to server {}", server_addr);
+                        stream
+                    }
+                    Err(e) => {
+                        log::error!("Failed to connect to server {}: {}", server_addr, e);
+                        send_reply(&mut socket, ReplyCode::GeneralFailure, &target).await?;
+                        return Err(e.into());
+                    }
+                };
+
+                // Perform Noise handshake
+                let mut noise_transport = match NoiseTransport::client_handshake(&mut server_stream, &noise_config).await {
+                    Ok(transport) => {
+                        log::debug!("Noise handshake completed with server");
+                        transport
+                    }
+                    Err(e) => {
+                        log::error!("Noise handshake failed: {}", e);
+                        send_reply(&mut socket, ReplyCode::GeneralFailure, &target).await?;
+                        return Err(e.into());
+                    }
+                };
+
+                // Send target info to server through encrypted tunnel
+                let target_info = format!("{}:{}", target.host, target.port);
+                match noise_transport.write(&mut server_stream, target_info.as_bytes()).await {
+                    Ok(_) => {
+                        log::debug!("Sent target info to server: {}", target_info);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to send target info: {}", e);
+                        send_reply(&mut socket, ReplyCode::GeneralFailure, &target).await?;
+                        return Err(e.into());
+                    }
+                }
+
+                // Wait for server's connection confirmation
+                let response = match noise_transport.read(&mut server_stream).await {
+                    Ok(data) => data,
+                    Err(e) => {
+                        log::error!("Failed to receive server response: {}", e);
+                        send_reply(&mut socket, ReplyCode::GeneralFailure, &target).await?;
+                        return Err(e.into());
+                    }
+                };
+
+                let response_str = String::from_utf8_lossy(&response);
+                if response_str != "OK" {
+                    log::error!("Server returned error: {}", response_str);
+                    let reply = if response_str.contains("refused") {
+                        ReplyCode::ConnectionRefused
+                    } else if response_str.contains("unreachable") {
+                        ReplyCode::HostUnreachable
+                    } else {
+                        ReplyCode::GeneralFailure
+                    };
+                    send_reply(&mut socket, reply, &target).await?;
+                    return Err(format!("Server error: {}", response_str).into());
+                }
+
+                // Send success reply to SOCKS5 client
+                send_reply(&mut socket, ReplyCode::Succeeded, &target).await?;
+                log::info!("Tunnel established to {}:{} via server", target.host, target.port);
+
+                // Create protocol wrapper using configured protocol
+                let wrapper = crate::ProtocolWrapper::new(protocol_id.clone(), None);
+                log::debug!("Created {} protocol wrapper for traffic obfuscation", protocol_id.as_str());
+
+                // Relay data bidirectionally through encrypted tunnel
+                log::debug!("Starting encrypted relay for {}:{}", target.host, target.port);
+                if let Err(e) = relay_through_noise_tunnel(socket, server_stream, noise_transport, wrapper).await {
+                    log::debug!("Tunnel relay ended for {}:{}: {}", target.host, target.port, e);
+                } else {
+                    log::debug!("Tunnel relay completed successfully for {}:{}", target.host, target.port);
+                }
+            } else {
+                // DIRECT MODE: Connect directly to target (local mode)
+                log::debug!("Direct connection mode (no server configured)");
+
+                let mut target_stream = match connect_target(&target).await {
+                    Ok(stream) => {
+                        log::info!("Connected to target {}:{}", target.host, target.port);
+                        send_reply(&mut socket, ReplyCode::Succeeded, &target).await?;
+                        stream
+                    }
+                    Err(e) => {
+                        log::error!("Failed to connect to {}:{}: {}", target.host, target.port, e);
+                        let reply = match e.kind() {
+                            std::io::ErrorKind::ConnectionRefused => ReplyCode::ConnectionRefused,
+                            std::io::ErrorKind::NotFound | std::io::ErrorKind::TimedOut => ReplyCode::HostUnreachable,
+                            _ => ReplyCode::GeneralFailure,
+                        };
+                        send_reply(&mut socket, reply, &target).await?;
+                        return Err(e.into());
+                    }
+                };
+
+                // Bidirectionally forward traffic between client and target
+                log::debug!("Starting bidirectional relay for {}:{}", target.host, target.port);
+                if let Err(e) = copy_bidirectional(socket, &mut target_stream).await {
+                    log::debug!("Relay ended for {}:{}: {}", target.host, target.port, e);
+                } else {
+                    log::debug!("Relay completed successfully for {}:{}", target.host, target.port);
+                }
+            }
+        }
+        Command::Bind => {
+            log::warn!("SOCKS5 BIND command not supported");
+            send_reply(&mut socket, ReplyCode::CommandNotSupported, &target).await?;
+        }
+        Command::UdpAssociate => {
+            log::info!("[UDP] SOCKS5 UDP ASSOCIATE request received for target {}:{}", target.host, target.port);
+            log::warn!("[UDP] SOCKS5 UDP ASSOCIATE command not yet integrated - DNS queries will fail");
+            send_reply(&mut socket, ReplyCode::CommandNotSupported, &target).await?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Relay data through Noise-encrypted tunnel with protocol wrapping
+async fn relay_through_noise_tunnel(
+    mut client: impl AsyncReadExt + AsyncWriteExt + Unpin,
+    mut server: TcpStream,
+    mut noise: NoiseTransport,
+    mut wrapper: crate::ProtocolWrapper,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use tokio::io::AsyncWriteExt;
+    let mut client_buf = vec![0u8; 8192];
+
+    loop {
+        tokio::select! {
+            // Read from client, encrypt, wrap, send to server
+            result = client.read(&mut client_buf) => {
+                match result {
+                    Ok(0) => break, // EOF
+                    Ok(n) => {
+                        // Encrypt with Noise
+                        let encrypted = noise.encrypt(&client_buf[..n])?;
+                        log::debug!("Encrypted {} bytes to {} bytes", n, encrypted.len());
+
+                        // Wrap with protocol headers (do this before await)
+                        let wrapped = wrapper.wrap(&encrypted)?;
+                        let wrapped_len = wrapped.len();
+                        log::debug!("Wrapped {} bytes to {} bytes with protocol obfuscation", encrypted.len(), wrapped_len);
+
+                        // Write wrapped data to server
+                        noise.write_raw(&mut server, &wrapped).await?;
+                    }
+                    Err(e) => {
+                        log::debug!("Client read error: {}", e);
+                        break;
+                    }
+                }
+            }
+            // Read from server (wrapped), unwrap, decrypt, send to client
+            result = noise.read_raw(&mut server) => {
+                match result {
+                    Ok(wrapped) if !wrapped.is_empty() => {
+                        let wrapped_len = wrapped.len();
+
+                        // Unwrap protocol headers (do this before decrypt which needs &mut wrapper)
+                        let encrypted = wrapper.unwrap(&wrapped)?;
+                        let encrypted_len = encrypted.len();
+                        log::debug!("Unwrapped {} bytes to {} bytes", wrapped_len, encrypted_len);
+
+                        // Decrypt with Noise
+                        let data = noise.decrypt(&encrypted)?;
+                        log::debug!("Decrypted {} bytes to {} bytes", encrypted_len, data.len());
+
+                        // Send to client
+                        client.write_all(&data).await?;
+                    }
+                    Ok(_) => break, // Empty read = EOF
+                    Err(e) => {
+                        log::debug!("Noise read error: {}", e);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -312,6 +548,7 @@ async fn handle_http_connection(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::BufMut;
 
     #[test]
     fn test_detect_socks5() {
