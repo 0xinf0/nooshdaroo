@@ -1,0 +1,112 @@
+// DNS query for google.com (A record)
+// Makes traffic appear as legitimate DNS queries to resolve google.com
+// Uses standard DNS wire format (RFC 1035)
+
+@SEGMENT.FORMATS
+
+  // DNS message header (12 bytes)
+  DEFINE DnsHeader
+    { NAME: transaction_id ; TYPE: u16 },     // Random transaction ID
+    { NAME: flags          ; TYPE: u16 },     // Query=0x0100, Response=0x8180
+    { NAME: questions      ; TYPE: u16 },     // Number of questions = 1
+    { NAME: answers        ; TYPE: u16 },     // Number of answers
+    { NAME: authority      ; TYPE: u16 },     // Authority RRs = 0
+    { NAME: additional     ; TYPE: u16 };     // Additional RRs = 0
+
+  // DNS Query for google.com (A record)
+  DEFINE DnsQuery
+    { NAME: header         ; TYPE: DnsHeader },
+    // Question section: google.com A record
+    { NAME: qname          ; TYPE: [u8; 12] },  // 0x06 "google" 0x03 "com" 0x00
+    { NAME: qtype          ; TYPE: u16 },       // 0x0001 = A record
+    { NAME: qclass         ; TYPE: u16 },       // 0x0001 = IN (Internet)
+    // Encrypted payload (actual tunnel data)
+    { NAME: payload_len    ; TYPE: u16 },
+    { NAME: payload        ; TYPE: [u8; payload_len.size_of] },
+    { NAME: mac            ; TYPE: [u8; 16] };  // Poly1305 MAC
+
+  // DNS Response (simulated A record response)
+  DEFINE DnsResponse
+    { NAME: header         ; TYPE: DnsHeader },
+    // Answer section: google.com A record
+    { NAME: answer_name    ; TYPE: u16 },       // 0xc00c = pointer to question
+    { NAME: answer_type    ; TYPE: u16 },       // 0x0001 = A record
+    { NAME: answer_class   ; TYPE: u16 },       // 0x0001 = IN
+    { NAME: answer_ttl     ; TYPE: u32 },       // TTL in seconds
+    { NAME: answer_len     ; TYPE: u16 },       // 0x0004 = 4 bytes (IPv4)
+    { NAME: answer_ip      ; TYPE: [u8; 4] },   // Fake IP address
+    // Encrypted payload (actual tunnel data)
+    { NAME: payload_len    ; TYPE: u16 },
+    { NAME: payload        ; TYPE: [u8; payload_len.size_of] },
+    { NAME: mac            ; TYPE: [u8; 16] };
+
+@SEGMENT.SEMANTICS
+
+  // Query header values
+  { FORMAT: DnsQuery; FIELD: flags;      SEMANTIC: FIXED_VALUE(0x0100) };  // Standard query
+  { FORMAT: DnsQuery; FIELD: questions;  SEMANTIC: FIXED_VALUE(0x0001) };  // 1 question
+  { FORMAT: DnsQuery; FIELD: answers;    SEMANTIC: FIXED_VALUE(0x0000) };  // 0 answers
+  { FORMAT: DnsQuery; FIELD: authority;  SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsQuery; FIELD: additional; SEMANTIC: FIXED_VALUE(0x0000) };
+  
+  // DNS question name: google.com
+  // Wire format: <length>label<length>label<0>
+  // 0x06 "google" 0x03 "com" 0x00
+  { FORMAT: DnsQuery; FIELD: qname; SEMANTIC: FIXED_VALUE(
+      0x06, 'g', 'o', 'o', 'g', 'l', 'e',  // 6-byte label "google"
+      0x03, 'c', 'o', 'm',                  // 3-byte label "com"
+      0x00                                   // Null terminator
+    )};
+  
+  { FORMAT: DnsQuery; FIELD: qtype;       SEMANTIC: FIXED_VALUE(0x0001) };  // A record
+  { FORMAT: DnsQuery; FIELD: qclass;      SEMANTIC: FIXED_VALUE(0x0001) };  // IN class
+  { FORMAT: DnsQuery; FIELD: transaction_id; SEMANTIC: RANDOM };
+  { FORMAT: DnsQuery; FIELD: payload_len; SEMANTIC: LENGTH };
+  { FORMAT: DnsQuery; FIELD: payload;     SEMANTIC: PAYLOAD };
+
+  // Response header values
+  { FORMAT: DnsResponse; FIELD: flags;      SEMANTIC: FIXED_VALUE(0x8180) };  // Standard response
+  { FORMAT: DnsResponse; FIELD: questions;  SEMANTIC: FIXED_VALUE(0x0001) };  // 1 question
+  { FORMAT: DnsResponse; FIELD: answers;    SEMANTIC: FIXED_VALUE(0x0001) };  // 1 answer
+  { FORMAT: DnsResponse; FIELD: authority;  SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsResponse; FIELD: additional; SEMANTIC: FIXED_VALUE(0x0000) };
+  
+  // Answer section
+  { FORMAT: DnsResponse; FIELD: answer_name;  SEMANTIC: FIXED_VALUE(0xc00c) };  // Pointer
+  { FORMAT: DnsResponse; FIELD: answer_type;  SEMANTIC: FIXED_VALUE(0x0001) };  // A record
+  { FORMAT: DnsResponse; FIELD: answer_class; SEMANTIC: FIXED_VALUE(0x0001) };  // IN
+  { FORMAT: DnsResponse; FIELD: answer_ttl;   SEMANTIC: FIXED_VALUE(0x0000012c) }; // 300 sec
+  { FORMAT: DnsResponse; FIELD: answer_len;   SEMANTIC: FIXED_VALUE(0x0004) };  // 4 bytes
+  { FORMAT: DnsResponse; FIELD: answer_ip;    SEMANTIC: FIXED_VALUE(
+      142, 250, 185, 46  // 142.250.185.46 (one of Google's IPs)
+    )};
+  
+  { FORMAT: DnsResponse; FIELD: transaction_id; SEMANTIC: RANDOM };
+  { FORMAT: DnsResponse; FIELD: payload_len; SEMANTIC: LENGTH };
+  { FORMAT: DnsResponse; FIELD: payload;     SEMANTIC: PAYLOAD };
+
+@SEGMENT.SEQUENCE
+
+  { ROLE: CLIENT; PHASE: DATA; FORMAT: DnsQuery };
+  { ROLE: SERVER; PHASE: DATA; FORMAT: DnsResponse };
+
+@SEGMENT.CRYPTO
+
+  PASSWORD = "nooshdaroo-dns-google-key";
+  CIPHER   = CHACHA20-POLY1305;
+
+  ENCRYPT DnsQuery FROM DnsQuery
+    { PTEXT: payload; CTEXT: payload; MAC: mac };
+
+  ENCRYPT DnsResponse FROM DnsResponse
+    { PTEXT: payload; CTEXT: payload; MAC: mac };
+
+@METADATA
+
+  PROTOCOL: DNS
+  DEFAULT_PORT: 53
+  QUERY: google.com
+  QTYPE: A
+  DESCRIPTION: "DNS A record query for google.com"
+  DPI_EVASION: HIGH
+  NOTES: "Traffic appears as legitimate DNS queries for google.com. Uses standard DNS wire format. Tunnel payload encrypted and embedded after DNS query/response."

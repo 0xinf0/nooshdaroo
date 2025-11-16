@@ -10,7 +10,9 @@ use crate::psf::{PsfInterpreter, ProtocolFrame};
 
 // Embed all PSF files at compile time
 const DNS_PSF: &str = include_str!("../protocols/dns/dns.psf");
+const DNS_GOOGLE_PSF: &str = include_str!("../protocols/dns/dns_google_com.psf");
 const HTTPS_PSF: &str = include_str!("../protocols/http/https.psf");
+const HTTPS_GOOGLE_PSF: &str = include_str!("../protocols/http/https_google_com.psf");
 const SSH_PSF: &str = include_str!("../protocols/ssh/ssh.psf");
 const WEBSOCKET_PSF: &str = include_str!("../protocols/http/websocket.psf");
 
@@ -28,9 +30,11 @@ fn get_psf_content(protocol: &str) -> Option<&'static str> {
     match protocol.to_lowercase().as_str() {
         // TLS/HTTPS
         "https" | "tls" | "tls13" => Some(HTTPS_PSF),
+        "https-google" | "https_google" | "https-google-com" | "https_google_com" => Some(HTTPS_GOOGLE_PSF),
 
         // DNS
         "dns" => Some(DNS_PSF),
+        "dns-google" | "dns_google" | "dns-google-com" | "dns_google_com" => Some(DNS_GOOGLE_PSF),
 
         // SSH
         "ssh" => Some(SSH_PSF),
