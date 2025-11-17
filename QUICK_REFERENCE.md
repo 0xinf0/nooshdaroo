@@ -156,12 +156,12 @@ protocol = "https"
 
 | Profile | Use Case | Protocols | Notes |
 |---------|----------|-----------|-------|
-| `corporate` | Office networks | https, dns, http | Multi-temporal mixing |
+| `corporate` | Office networks | https, dns, tls13 | Multi-temporal mixing |
 | `airport` | Public WiFi | dns, https | Conservative, DNS fallback |
 | `hotel` | Hotel networks | dns, https | Very conservative |
-| `china` | Great Firewall | dns, https, quic, websocket | Adaptive learning |
-| `iran` | Iranian filtering | Similar to china | DNS emphasis |
-| `russia` | Russian filtering | Mixed protocols | Rotation enabled |
+| `china` | Great Firewall | dns, https, quic, tls13 | Adaptive learning |
+| `iran` | Iranian filtering | dns, https, ssh | DNS emphasis |
+| `russia` | Russian filtering | https, quic, ssh, dns | Rotation enabled |
 
 ---
 
@@ -261,9 +261,9 @@ enabled = false  # Disable shaping for minimum latency
 [shapeshift.strategy]
 type = "adaptive"
 switch_threshold = 0.5
+safe_protocols = ["dns", "https", "tls_simple"]
 
 [traffic]
-application_profile = "whatsapp"
 enabled = true
 
 [bandwidth]

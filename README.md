@@ -6,6 +6,8 @@ Nooshdaroo (نوشدارو, Persian for "antidote") disguises encrypted SOCKS5 t
 
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
+[![nDPI Validated](https://img.shields.io/badge/nDPI%20Validated-Google%20Protocol-success.svg)](NDPI_BASELINE_SUCCESS.md)
+[![DPI Confidence](https://img.shields.io/badge/DPI%20Confidence-Validated-brightgreen.svg)](NDPI_BASELINE_SUCCESS.md)
 
 ## 📘 Complete Documentation
 
@@ -68,10 +70,10 @@ Available profiles: `corporate`, `airport`, `hotel`, `china`, `iran`, `russia`
 ## Features
 
 ### Core Capabilities
-- **121 Protocol Emulations**: HTTPS, DNS, SSH, QUIC, WebSocket, gaming protocols, database protocols, and more
+- **9 Validated Protocol Emulations**: HTTPS, DNS (with Google variants), TLS 1.3, SSH, QUIC
 - **Noise Protocol Encryption**: ChaCha20-Poly1305 AEAD with X25519 key exchange (forward secrecy)
 - **Multiple Proxy Modes**: SOCKS5, HTTP CONNECT
-- **Traffic Shaping**: Emulate real applications (Zoom, Netflix, YouTube, Microsoft Teams, WhatsApp)
+- **Traffic Shaping**: Statistical traffic emulation for DPI evasion
 - **Adaptive Bandwidth**: Automatic quality adjustment based on network conditions (4 quality tiers)
 - **Preset Profiles**: 6 environment-specific configurations for different censorship scenarios
 - **Multi-Port Server**: Listen on multiple protocol-appropriate ports simultaneously
@@ -197,7 +199,7 @@ Nooshdaroo builds on the [Proteus project](https://github.com/unblockable/proteu
 
 - UDP protocol support with NAT session tracking
 - Noise Protocol encryption
-- Expanded protocol library (121 vs. ~20)
+- Validated protocol library (9 nDPI-validated protocols)
 - Application traffic profile emulation
 - Adaptive bandwidth optimization
 - Production deployment infrastructure

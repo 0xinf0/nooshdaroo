@@ -33,10 +33,10 @@
 Nooshdaroo (نوشدارو, Persian for "antidote") is a sophisticated proxy system designed to bypass network censorship and deep packet inspection (DPI). It disguises encrypted SOCKS5 proxy traffic as legitimate network protocols through dynamic protocol emulation and statistical traffic shaping.
 
 **Key Capabilities:**
-- Emulates 121 network protocols across 16 categories
+- 9 nDPI-validated protocol emulations (HTTPS, DNS, TLS 1.3, SSH, QUIC)
 - Encrypted transport using Noise Protocol Framework
 - Multiple proxy modes (SOCKS5, HTTP CONNECT)
-- Adaptive traffic shaping with application profiles
+- Statistical traffic shaping for DPI evasion
 - Cross-platform support (Linux, macOS, Windows, with mobile foundations)
 
 ### 1.2 Primary Use Cases
@@ -51,8 +51,8 @@ Nooshdaroo (نوشدارو, Persian for "antidote") is a sophisticated proxy sys
 Nooshdaroo builds on the [Proteus project](https://github.com/unblockable/proteus) (approximately 70% of core TCP proxy architecture). Key enhancements include:
 - UDP protocol support with NAT session tracking
 - Noise Protocol encryption (ChaCha20-Poly1305)
-- Expanded protocol library (121 protocols vs. Proteus's ~20)
-- Application traffic profile emulation
+- Validated protocol library (9 nDPI-validated protocols)
+- Statistical traffic profile emulation
 - Adaptive bandwidth optimization
 - Production deployment infrastructure
 
@@ -84,7 +84,7 @@ Nooshdaroo builds on the [Proteus project](https://github.com/unblockable/proteu
 │  │       Shape-Shifting Controller                 │           │
 │  │  - Protocol Selection (5 strategies)            │           │
 │  │  - Dynamic Rotation                             │           │
-│  │  - 121 Protocol Library                         │           │
+│  │  - 9 Validated Protocol Library                 │           │
 │  └──────┬──────────────────────────────────────────┘           │
 │         │                                                       │
 │  ┌──────▼──────────────────────────────────────────┐           │
@@ -297,31 +297,23 @@ normal_protocols = ["quic", "websocket"]
 
 ### 3.3 Protocol Library
 
-**Implementation:** `src/library.rs` (17,261 lines), 121 PSF files
+**Implementation:** `src/library.rs` (17,261 lines), 9 validated PSF files
 
-**Protocol Categories (Actual Files):**
+**Validated Protocols (nDPI-tested):**
 
-| Category | Count | Example Protocols |
-|----------|-------|------------------|
-| HTTP/Web | 13 | HTTP/2, HTTP/3, WebSocket, QUIC, gRPC, GraphQL |
-| DNS | 5 | DNS, DoT, DoH, DoQ, mDNS |
-| VPN | 10 | WireGuard, OpenVPN, IKEv2, Tailscale |
-| Streaming | 10 | RTMP, RTSP, HLS, DASH, SRT |
-| Gaming | 10 | Minecraft, Steam, Discord, Fortnite, CS:GO |
-| Messaging | 10 | XMPP, Matrix, Signal, Telegram, WhatsApp |
-| Database | 11 | PostgreSQL, MySQL, Redis, MongoDB, Elasticsearch |
-| Email | 6 | SMTP, IMAP, POP3 (+ TLS variants) |
-| File Transfer | 10 | FTP, SFTP, BitTorrent, WebDAV, rsync |
-| IoT | 13 | MQTT, CoAP, Zigbee, LoRaWAN, Matter |
-| Security | 7 | Kerberos, LDAP, RADIUS, OAuth2 |
-| Network | 7 | SNMP, BGP, OSPF, NetFlow, VXLAN |
-| Cloud | 4 | Kubernetes API, Docker API, etcd, Consul |
-| VoIP | 2 | SIP, H.323 |
-| SSH | 1 | SSH-2.0 |
-| TLS | 1 | TLS 1.3 |
-| Printing | 1 | IPP |
+| Protocol | PSF File | Default Port | Description |
+|----------|----------|--------------|-------------|
+| HTTPS | protocols/http/https.psf | 443 | Standard HTTPS/TLS application data |
+| HTTPS (Google) | protocols/http/https_google_com.psf | 443 | HTTPS with Google.com SNI |
+| TLS Simple | protocols/http/tls_simple.psf | 443 | Minimal TLS 1.2/1.3 emulation |
+| TLS 1.3 Complete | protocols/http/tls13_complete.psf | 443 | Full TLS 1.3 with ClientHello/ServerHello |
+| DNS | protocols/dns/dns.psf | 53 | Standard DNS queries |
+| DNS (Google) | protocols/dns/dns_google_com.psf | 53 | DNS A record queries for google.com |
+| SSH | protocols/ssh/ssh.psf | 22 | SSH-2.0 protocol emulation |
+| QUIC | protocols/quic/quic.psf | 443 | QUIC/HTTP3 protocol |
+| TLS 1.3 | protocols/tls/tls13.psf | 443 | TLS 1.3 record-level emulation |
 
-**Total:** 121 protocol definitions
+**Total:** 9 nDPI-validated protocol definitions
 
 **Protocol Metadata Structure:**
 ```rust
@@ -1062,7 +1054,7 @@ local_private_key = "SERVER_PRIVATE_KEY_HERE"
 
 [shapeshift.strategy]
 type = "adaptive"
-protocols = ["https", "quic", "http2"]
+protocols = ["https", "quic", "dns"]
 rotation_interval = "15m"
 
 [logging]
@@ -1522,7 +1514,7 @@ initial_protocol = "https"
 rotation_interval = "5m"
 
 # Protocol sequence (for time-based strategy)
-sequence = ["https", "quic", "websocket", "dns"]
+sequence = ["https", "quic", "dns", "ssh"]
 
 # Bytes threshold (for traffic-based strategy)
 bytes_threshold = 10485760  # 10 MB
@@ -1531,16 +1523,16 @@ bytes_threshold = 10485760  # 10 MB
 packet_threshold = 10000
 
 # Protocol pool (for random/traffic-based strategies)
-protocol_pool = ["https", "quic", "grpc", "ssh"]
+protocol_pool = ["https", "quic", "ssh", "dns"]
 
 # Detection risk threshold (for adaptive strategy)
 switch_threshold = 0.7
 
 # Safe protocols (for adaptive strategy)
-safe_protocols = ["https", "tls13", "dns"]
+safe_protocols = ["https", "tls13", "dns", "tls_simple"]
 
 # Normal protocols (for adaptive strategy)
-normal_protocols = ["quic", "websocket", "http2"]
+normal_protocols = ["quic", "ssh", "https_google_com"]
 
 # ─────────────────────────────────────────────────────────
 # Traffic Shaping
@@ -1996,7 +1988,7 @@ Total Capacity: 1,500 concurrent users
    - Reinforcement learning for strategy improvement
 2. Multi-path TCP (MPTCP) support
 3. P2P relay network
-4. Protocol library expansion (150+ protocols)
+4. Additional nDPI-validated protocols (target: 20-30 protocols)
 5. Hardware acceleration (SIMD, GPU)
 
 **Long-Term (12+ months):**
@@ -2009,10 +2001,9 @@ Total Capacity: 1,500 concurrent users
 ### 12.3 Community Contributions Needed
 
 **Protocol Definitions:**
-- Enterprise protocols (SAP, Oracle, MS SQL)
-- Social media apps (Instagram, TikTok, Snapchat)
-- Cloud storage (Dropbox, Google Drive, OneDrive)
-- Regional applications (WeChat, LINE, Kakao)
+- Additional nDPI-validated protocols with proper semantic rules
+- Protocol pcap traces for validation testing
+- Improved PSF syntax documentation
 
 **Traffic Analysis:**
 - Real-world pcap files for profile extraction
@@ -2085,24 +2076,21 @@ Nooshdaroo/
 │   ├── profiles.rs (8,447)             # Preset profiles
 │   ├── mod.rs (4,263)                  # Module declarations
 │   └── psf/ (directory)                # PSF interpreter
-├── protocols/ (121 .psf files)         # Protocol definitions
-│   ├── http/*.psf (13 files)
-│   ├── dns/*.psf (5 files)
-│   ├── vpn/*.psf (10 files)
-│   ├── streaming/*.psf (10 files)
-│   ├── gaming/*.psf (10 files)
-│   ├── messaging/*.psf (10 files)
-│   ├── database/*.psf (11 files)
-│   ├── email/*.psf (6 files)
-│   ├── file-transfer/*.psf (10 files)
-│   ├── iot/*.psf (13 files)
-│   ├── security/*.psf (7 files)
-│   ├── network/*.psf (7 files)
-│   ├── cloud/*.psf (4 files)
-│   ├── voip/*.psf (2 files)
-│   ├── ssh/*.psf (1 file)
-│   ├── tls/*.psf (1 file)
-│   └── printing/*.psf (1 file)
+├── protocols/ (9 .psf files)           # Validated protocol definitions
+│   ├── http/
+│   │   ├── https.psf
+│   │   ├── https_google_com.psf
+│   │   ├── tls_simple.psf
+│   │   └── tls13_complete.psf
+│   ├── dns/
+│   │   ├── dns.psf
+│   │   └── dns_google_com.psf
+│   ├── ssh/
+│   │   └── ssh.psf
+│   ├── quic/
+│   │   └── quic.psf
+│   └── tls/
+│       └── tls13.psf
 ├── tests/                              # Test suites
 ├── examples/                           # Example configs
 ├── Cargo.toml                          # Rust package manifest
@@ -2113,12 +2101,26 @@ Nooshdaroo/
 └── NOOSHDAROO_TECHNICAL_REFERENCE.md   # This document
 
 Total Source Lines: 9,725 lines of Rust code
-Total Protocols: 121 PSF definitions
+Total Protocols: 9 nDPI-validated PSF definitions
 ```
 
-### Appendix C: Protocol List (Complete)
+### Appendix C: Protocol Validation Status
 
-[See PROTOCOLS.md for the complete list of 121 protocols]
+All 9 protocols have been validated against nDPI v4.15.0 for detection resistance:
+
+| Protocol | nDPI Classification | Confidence | Status |
+|----------|-------------------|------------|--------|
+| https.psf | TLS/SSL | High | ✅ Validated |
+| https_google_com.psf | TLS.Google | High | ✅ Validated |
+| dns.psf | DNS | High | ✅ Validated |
+| dns_google_com.psf | DNS | High | ✅ Validated |
+| ssh.psf | SSH | High | ✅ Validated |
+| quic.psf | QUIC | High | ✅ Validated |
+| tls_simple.psf | TLS | High | ✅ Validated |
+| tls13_complete.psf | TLS | High | ✅ Validated |
+| tls13.psf | TLS | High | ✅ Validated |
+
+**Validation Method:** Each protocol was tested using tcpdump packet captures analyzed with nDPI's ndpiReader tool to verify correct protocol classification.
 
 ### Appendix D: References
 
@@ -2155,7 +2157,7 @@ Total Protocols: 121 PSF definitions
 **Last Updated:** 2025-11-16
 **Authors:** Sina Rabbani, Claude Code (Anthropic)
 **Verification:** All code references verified against actual implementation
-**Lines Analyzed:** 9,725 lines of source code, 121 protocol files, 21 documentation files
+**Lines Analyzed:** 9,725 lines of source code, 9 validated protocol files
 
 **Accuracy Statement:** This document reflects the ACTUAL implementation as of the specified date. All command examples use real CLI flags from `src/main.rs`. All API examples use actual types from `src/lib.rs`. All features marked as "implemented" have been verified to exist in the source code. Features documented elsewhere but not present in code are clearly marked as "Future Development."
 
