@@ -1,5 +1,5 @@
 mode = "client"
-protocol_dir = "protocols"
+# protocol_dir is deprecated - protocols are now embedded in the binary
 
 [encryption]
 cipher = "cha-cha20-poly1305"

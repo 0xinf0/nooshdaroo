@@ -5,13 +5,19 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+/// Default protocol directory (no longer used since protocols are embedded)
+fn default_protocol_dir() -> PathBuf {
+    PathBuf::from("protocols")
+}
+
 /// Main Nooshdaroo configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NooshdarooConfig {
     /// Mode of operation
     pub mode: NooshdarooMode,
 
-    /// Protocol library directory
+    /// Protocol library directory (deprecated - protocols are now embedded)
+    #[serde(default = "default_protocol_dir")]
     pub protocol_dir: PathBuf,
 
     /// Encryption configuration

@@ -1,5 +1,5 @@
 mode = "server"
-protocol_dir = "protocols"
+# protocol_dir is deprecated - protocols are now embedded in the binary
 
 [encryption]
 cipher = "cha-cha20-poly1305"
@@ -12,8 +12,6 @@ protocol = "https"
 
 [server]
 listen_addr = "0.0.0.0:8443"
-forward_addr = "127.0.0.1:80"
-forward_proto = "tcp"
 
 [transport]
 pattern = "nk"
