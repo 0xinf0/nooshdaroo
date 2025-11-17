@@ -70,36 +70,16 @@ pub struct MultiPortConfig {
 
     /// Whether to bind to random high ports as well
     pub use_random_ports: bool,
-
-    /// Protocol-to-port mappings
-    pub protocol_ports: HashMap<String, Vec<u16>>,
 }
 
 impl Default for MultiPortConfig {
     fn default() -> Self {
-        let mut protocol_ports = HashMap::new();
-
-        // Common protocol ports for realistic traffic patterns
-        protocol_ports.insert("https".to_string(), vec![443, 8443]);
-        protocol_ports.insert("http".to_string(), vec![80, 8080, 8000]);
-        protocol_ports.insert("ssh".to_string(), vec![22, 2222]);
-        protocol_ports.insert("dns".to_string(), vec![53]); // DNS fallback
-        protocol_ports.insert("smtp".to_string(), vec![25, 587, 465]);
-        protocol_ports.insert("imap".to_string(), vec![143, 993]);
-        protocol_ports.insert("pop3".to_string(), vec![110, 995]);
-        protocol_ports.insert("ftp".to_string(), vec![21, 990]);
-        protocol_ports.insert("openvpn".to_string(), vec![1194]);
-        protocol_ports.insert("wireguard".to_string(), vec![51820]);
-        protocol_ports.insert("quic".to_string(), vec![443, 8443]);
-        protocol_ports.insert("websocket".to_string(), vec![80, 443, 8080]);
-
         Self {
             bind_addr: "0.0.0.0".to_string(),
             port_range: (1, 65535),
             max_ports: 20,
             use_standard_ports: true,
             use_random_ports: true,
-            protocol_ports,
         }
     }
 }
@@ -310,16 +290,17 @@ impl PathTester {
     ) -> Vec<PathTestResult> {
         let mut results = Vec::new();
 
-        // Test standard protocol ports
+        // Test standard protocol ports from loaded protocols
         if config.use_standard_ports {
-            for (proto_name, ports) in &config.protocol_ports {
-                if let Some(protocol) = self.library.get(&ProtocolId::from(proto_name.as_str())) {
-                    for &port in ports {
-                        if let Ok(addr) = format!("{}:{}", server_host, port).parse::<SocketAddr>() {
-                            let result = self.test_path(addr, protocol).await;
-                            results.push(result);
-                        }
-                    }
+            for protocol in self.library.all() {
+                let port = protocol.default_port;
+                if port == 0 {
+                    continue;
+                }
+
+                if let Ok(addr) = format!("{}:{}", server_host, port).parse::<SocketAddr>() {
+                    let result = self.test_path(addr, protocol).await;
+                    results.push(result);
                 }
             }
         }

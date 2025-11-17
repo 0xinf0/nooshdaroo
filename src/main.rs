@@ -848,6 +848,7 @@ password = "nooshdaroo-server-secret"
 [server]
 listen_addr = "{}"
 forward_addr = "127.0.0.1:0"
+forward_proto = "tcp"
 
 [transport]
 pattern = "{}"

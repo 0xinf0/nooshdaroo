@@ -66,3 +66,7 @@ criterion/
 RFCs.docset/
 RFCs.docset-*.tgz
 RFCs.docset-v2.0.0.tgz
+
+
+#Ignore vscode AI rules
+.github/instructions/codacy.instructions.md

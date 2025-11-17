@@ -1,0 +1,29 @@
+# Example Client Configuration for nooshdaroo.net Public Test Server
+# Save this as client.toml and run:  nooshdaroo --config client.toml client
+
+mode = "client"
+protocol_dir = "protocols"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+password = "public-test-server-2025"  # Match server password
+
+[server]
+# The public test server - use domain name or IP
+listen_addr = "nooshdaroo.net:443"    # Or 23.128.36.42:443
+
+[transport]
+pattern = "nk"
+
+[socks]
+# Local SOCKS5 proxy for your apps
+listen_addr = "127.0.0.1:1080"
+server_address = "nooshdaroo.net:443"
+auth_required = false
+
+[shapeshift.strategy]
+# Try different protocols if one is blocked:
+# https, dns, ssh, http
+type = "adaptive"
+protocol = "https"

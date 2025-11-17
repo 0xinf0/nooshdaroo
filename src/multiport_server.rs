@@ -73,30 +73,40 @@ impl MultiPortServer {
         let mut bindings = Vec::new();
         let mut port_protocols = HashMap::new();
 
-        // Bind standard protocol ports
+        // Get all loaded protocols from the library
+        let loaded_protocols = self.library.all();
+
+        log::info!("Loaded {} protocols from library", loaded_protocols.len());
+
+        // Bind standard protocol ports using loaded protocols
         if self.config.use_standard_ports {
-            for (proto_name, ports) in &self.config.protocol_ports {
-                let proto_id = ProtocolId::from(proto_name.as_str());
+            for proto in loaded_protocols.iter() {
+                let port = proto.default_port;
 
-                for &port in ports {
-                    if bindings.len() >= self.config.max_ports {
-                        break;
-                    }
+                // Skip if port is 0 (no default port) or we've reached max_ports
+                if port == 0 || bindings.len() >= self.config.max_ports {
+                    continue;
+                }
 
-                    port_protocols
-                        .entry(port)
-                        .or_insert_with(Vec::new)
-                        .push(proto_id.clone());
+                log::debug!(
+                    "Adding protocol {} on default port {}",
+                    proto.id.as_str(),
+                    port
+                );
 
-                    if !bindings.iter().any(|b: &PortBinding| b.port == port) {
-                        bindings.push(PortBinding {
-                            port,
-                            protocols: vec![proto_id.clone()],
-                            bind_addr: format!("{}:{}", self.config.bind_addr, port)
-                                .parse()
-                                .unwrap(),
-                        });
-                    }
+                port_protocols
+                    .entry(port)
+                    .or_insert_with(Vec::new)
+                    .push(proto.id.clone());
+
+                if !bindings.iter().any(|b: &PortBinding| b.port == port) {
+                    bindings.push(PortBinding {
+                        port,
+                        protocols: vec![proto.id.clone()],
+                        bind_addr: format!("{}:{}", self.config.bind_addr, port)
+                            .parse()
+                            .unwrap(),
+                    });
                 }
             }
         }

@@ -11,7 +11,7 @@
     <header class="header">
         <div class="container">
             <div class="logo">
-                <div class="logo-icon">💊</div>
+                <img src="nooshdaroo-logo.png" alt="Nooshdaroo" class="logo-icon">
                 <div>
                     <h1>Nooshdaroo</h1>
                     <p class="tagline">THE ANTIDOTE TO CENSORSHIP</p>
@@ -28,7 +28,7 @@
     </header>
 
     <section class="hero">
-        <div class="hero-icon">💊</div>
+        <img src="nooshdaroo-logo.png" alt="Nooshdaroo" class="hero-icon">
         <h2>
             The <span class="gradient-text">Antidote</span><br>
             to Internet Censorship
@@ -52,38 +52,38 @@
             <div class="feature-grid">
                 <div class="feature-card">
                     <div class="feature-icon">🔒</div>
-                    <h3>Military-Grade Encryption</h3>
-                    <p>Noise Protocol with ChaCha20-Poly1305 AEAD. X25519 key exchange. Your traffic is completely encrypted and authenticated.</p>
+                    <h3>Noise Protocol Framework</h3>
+                    <p>Modern cryptographic protocol used by WhatsApp and WireGuard. ChaCha20-Poly1305 AEAD cipher, X25519 elliptic curve, perfect forward secrecy. Your traffic is end-to-end encrypted and authenticated.</p>
                 </div>
 
                 <div class="feature-card">
                     <div class="feature-icon">🎭</div>
-                    <h3>Protocol Shape-Shifting</h3>
-                    <p>Your encrypted traffic masquerades as legitimate HTTPS, DNS, or SSH. Deep packet inspection sees nothing suspicious.</p>
+                    <h3>Protocol Shape-Shifting Engine</h3>
+                    <p>Custom PSF (Protocol Shape File) interpreter that dynamically morphs encrypted payloads into legitimate HTTPS, DNS, or SSH packets. Deep packet inspection systems see authentic-looking traffic patterns.</p>
                 </div>
 
                 <div class="feature-card">
                     <div class="feature-icon">⚡</div>
-                    <h3>Minimal Performance Impact</h3>
-                    <p>Async Rust with Tokio runtime. Real-world testing: 711 Mbps through encrypted tunnel vs 905 Mbps direct (22% overhead). Fast enough for 4K streaming, large downloads, and remote work.</p>
+                    <h3>Zero-Copy Async Architecture</h3>
+                    <p>Built on Tokio's async runtime with zero-copy buffer management. Measured: 711 Mbps encrypted throughput vs 905 Mbps direct (22% overhead). Optimized for 4K streaming, large transfers, and low-latency applications.</p>
                 </div>
 
                 <div class="feature-card">
                     <div class="feature-icon">📱</div>
-                    <h3>Mobile-First Design</h3>
-                    <p>iOS and Android FFI bindings ready. Embedded server keys. Built for real-world mobile deployment.</p>
+                    <h3>Cross-Platform Native Code</h3>
+                    <p>Pure Rust with C FFI bindings for iOS and Android. Embedded key management, minimal dependencies. Deploy natively on mobile, desktop, and server without runtime overhead.</p>
                 </div>
 
                 <div class="feature-card">
                     <div class="feature-icon">🛡️</div>
-                    <h3>nDPI-Validated DPI Evasion</h3>
-                    <p>Traffic successfully classified as "Google" protocol by nDPI 4.15.0 with DPI confidence. Your Noise-encrypted payloads are indistinguishable from legitimate HTTPS, DNS, or SSH traffic.</p>
+                    <h3>nDPI-Validated Evasion</h3>
+                    <p>Traffic classified as "Google" protocol by nDPI 4.15.0 with high DPI confidence. Noise-encrypted payloads successfully masquerade as legitimate application traffic, validated against industry-standard deep packet inspection.</p>
                 </div>
 
                 <div class="feature-card">
                     <div class="feature-icon">🔓</div>
-                    <h3>100% Open Source</h3>
-                    <p>Fully auditable Rust code. Build from source. Verify GPG signatures. No backdoors. No compromises.</p>
+                    <h3>Fully Auditable Source</h3>
+                    <p>100% open source Rust. GPG-signed releases, reproducible builds, comprehensive test suite. No proprietary components, no telemetry, no compromises. Verify every line yourself.</p>
                 </div>
             </div>
         </div>
@@ -103,7 +103,7 @@
                 </div>
 
                 <div class="perf-card perf-highlight">
-                    <div class="perf-icon">💊</div>
+                    <img src="nooshdaroo-logo.png" alt="Nooshdaroo" class="perf-icon">
                     <h3>Nooshdaroo Tunnel</h3>
                     <div class="perf-number">711 Mbps</div>
                     <p>With ChaCha20-Poly1305 encryption and HTTPS protocol emulation</p>
@@ -266,13 +266,12 @@ cargo build --release --target aarch64-linux-android</code></pre>
             <div class="doc-grid">
                 <div class="doc-card">
                     <h3>Quick Start</h3>
-                    <p>Get up and running in 60 seconds. Basic client-server setup.</p>
-                    <pre><code># Server
-nooshdaroo server --bind 0.0.0.0:8443
+                    <p>Get up and running in 60 seconds. Use example configurations.</p>
+                    <pre><code># Server (create server.toml first)
+nooshdaroo --config server.toml server
 
-# Client
-nooshdaroo client \
-  --bind 127.0.0.1:1080 \
+# Client (create client.toml first)
+nooshdaroo --config client.toml client \
   --server vpn.example.com:8443 \
   --protocol https</code></pre>
                 </div>
@@ -292,14 +291,24 @@ nooshdaroo client \
 
                 <div class="doc-card">
                     <h3>Server Setup</h3>
-                    <p>Generate keys and configure your server endpoint.</p>
-                    <pre><code># Generate Noise keypair
-nooshdaroo genkey > server.key
+                    <p>Create server.toml configuration and start your server.</p>
+                    <pre><code># Create server.toml
+mode = "server"
+protocol_dir = "protocols"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+password = "your-secure-password"
+
+[server]
+listen_addr = "0.0.0.0:8443"
+
+[transport]
+pattern = "nk"
 
 # Run server
-nooshdaroo server \
-  --bind 0.0.0.0:8443 \
-  --key server.key</code></pre>
+nooshdaroo --config server.toml server</code></pre>
                 </div>
 
                 <div class="doc-card">
