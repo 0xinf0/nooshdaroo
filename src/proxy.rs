@@ -220,7 +220,14 @@ async fn handle_socks5(
                 };
 
                 // Send target info to server through encrypted tunnel
-                let target_info = format!("{}:{}", target.host, target.port);
+                // IPv6 addresses must be wrapped in brackets: [2a00:800::1]:80
+                let target_info = if target.host.contains(':') {
+                    // IPv6 address - wrap in brackets
+                    format!("[{}]:{}", target.host, target.port)
+                } else {
+                    // IPv4 or hostname
+                    format!("{}:{}", target.host, target.port)
+                };
                 match noise_transport.write(&mut server_stream, target_info.as_bytes()).await {
                     Ok(_) => {
                         log::debug!("Sent target info to server: {}", target_info);

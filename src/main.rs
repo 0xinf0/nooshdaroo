@@ -556,18 +556,45 @@ async fn handle_tunnel_connection(
     let target_str = String::from_utf8_lossy(&target_data);
     log::info!("Client {} requests connection to: {}", peer_addr, target_str);
 
-    // Parse target address (format: "host:port")
-    let parts: Vec<&str> = target_str.split(':').collect();
-    if parts.len() != 2 {
-        let error_msg = format!("Invalid target format: {}", target_str);
-        log::error!("{}", error_msg);
-        noise_transport.write(&mut tunnel_stream, error_msg.as_bytes()).await?;
-        return Err(anyhow::anyhow!(error_msg));
-    }
+    // Parse target address (format: "host:port" or "[ipv6]:port")
+    let (target_host, target_port) = if target_str.starts_with('[') {
+        // IPv6 format: [2a00:800::1]:80
+        if let Some(bracket_end) = target_str.find(']') {
+            let ipv6_part = &target_str[1..bracket_end]; // Strip [ and ]
+            let port_part = &target_str[bracket_end + 1..]; // Everything after ]
 
-    let target_host = parts[0];
-    let target_port = parts[1].parse::<u16>()
-        .context("Invalid port number")?;
+            if !port_part.starts_with(':') {
+                let error_msg = format!("Invalid IPv6 target format: {}", target_str);
+                log::error!("{}", error_msg);
+                noise_transport.write(&mut tunnel_stream, error_msg.as_bytes()).await?;
+                return Err(anyhow::anyhow!(error_msg));
+            }
+
+            let port = port_part[1..].parse::<u16>()
+                .context("Invalid port number")?;
+            (ipv6_part, port)
+        } else {
+            let error_msg = format!("Invalid IPv6 target format: {}", target_str);
+            log::error!("{}", error_msg);
+            noise_transport.write(&mut tunnel_stream, error_msg.as_bytes()).await?;
+            return Err(anyhow::anyhow!(error_msg));
+        }
+    } else {
+        // IPv4 or hostname format: example.com:80
+        let parts: Vec<&str> = target_str.split(':').collect();
+        if parts.len() != 2 {
+            let error_msg = format!("Invalid target format: {}", target_str);
+            log::error!("{}", error_msg);
+            noise_transport.write(&mut tunnel_stream, error_msg.as_bytes()).await?;
+            return Err(anyhow::anyhow!(error_msg));
+        }
+
+        let port = parts[1].parse::<u16>()
+            .context("Invalid port number")?;
+        (parts[0], port)
+    };
+
+    let target_host = target_host;
 
     // Connect to actual target
     log::debug!("Connecting to target {}:{}", target_host, target_port);
