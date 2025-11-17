@@ -1,0 +1,23 @@
+# Nooshdaroo Client Configuration
+# Generated: 2025-11-17 13:16:33
+
+mode = "client"
+protocol_dir = "protocols"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+password = "nooshdaroo-client-secret"
+
+[socks]
+listen_addr = "127.0.0.1:1080"
+server_address = "23.128.36.101:443"
+auth_required = false
+
+[transport]
+pattern = "nk"
+remote_public_key = "DRO5LRTKTYpCfHRtVok1/2TKmicHqnUTYkUvXmqNF1s="   # Server's public key
+
+[shapeshift.strategy]
+type = "fixed"
+protocol = "https"

@@ -214,21 +214,6 @@ pub enum DistributionType {
 pub struct ServerConfig {
     /// Listen address
     pub listen_addr: SocketAddr,
-
-    /// Forward address (e.g., Tor SOCKS port)
-    pub forward_addr: SocketAddr,
-
-    /// Forward protocol type
-    pub forward_proto: ForwardProtocol,
-}
-
-/// Forward protocol type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ForwardProtocol {
-    Socks5,
-    Http,
-    Tcp,
 }
 
 /// Detection resistance configuration
@@ -337,8 +322,6 @@ mod tests {
         // Should succeed with server config
         config.server = Some(ServerConfig {
             listen_addr: "0.0.0.0:443".parse().unwrap(),
-            forward_addr: "127.0.0.1:9050".parse().unwrap(),
-            forward_proto: ForwardProtocol::Socks5,
         });
         assert!(config.validate().is_ok());
     }
