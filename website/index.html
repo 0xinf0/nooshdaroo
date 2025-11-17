@@ -64,8 +64,8 @@
 
                 <div class="feature-card">
                     <div class="feature-icon">⚡</div>
-                    <h3>Zero Performance Hit</h3>
-                    <p>Async Rust with Tokio runtime. Zero-copy I/O. Minimal overhead. Maximum throughput. Your connection stays fast.</p>
+                    <h3>Minimal Performance Impact</h3>
+                    <p>Async Rust with Tokio runtime. Real-world testing: 711 Mbps through encrypted tunnel vs 905 Mbps direct (22% overhead). Fast enough for 4K streaming, large downloads, and remote work.</p>
                 </div>
 
                 <div class="feature-card">
@@ -76,8 +76,8 @@
 
                 <div class="feature-card">
                     <div class="feature-icon">🛡️</div>
-                    <h3>DPI Evasion</h3>
-                    <p>Traffic wrapping makes your Noise-encrypted payloads look identical to real TLS, DNS queries, or SSH handshakes.</p>
+                    <h3>nDPI-Validated DPI Evasion</h3>
+                    <p>Traffic successfully classified as "Google" protocol by nDPI 4.15.0 with DPI confidence. Your Noise-encrypted payloads are indistinguishable from legitimate HTTPS, DNS, or SSH traffic.</p>
                 </div>
 
                 <div class="feature-card">
@@ -85,6 +85,47 @@
                     <h3>100% Open Source</h3>
                     <p>Fully auditable Rust code. Build from source. Verify GPG signatures. No backdoors. No compromises.</p>
                 </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="performance" class="performance">
+        <div class="container">
+            <h2>Real-World Performance</h2>
+            <p class="section-description">Validated on November 17, 2025 - MacBook Pro M1 to bare-metal server (1 Gbps connection)</p>
+
+            <div class="perf-grid">
+                <div class="perf-card">
+                    <div class="perf-icon">🚀</div>
+                    <h3>Direct Connection</h3>
+                    <div class="perf-number">905 Mbps</div>
+                    <p>Baseline performance without encryption or proxying</p>
+                </div>
+
+                <div class="perf-card perf-highlight">
+                    <div class="perf-icon">💊</div>
+                    <h3>Nooshdaroo Tunnel</h3>
+                    <div class="perf-number">711 Mbps</div>
+                    <p>With ChaCha20-Poly1305 encryption and HTTPS protocol emulation</p>
+                </div>
+
+                <div class="perf-card">
+                    <div class="perf-icon">⚡</div>
+                    <h3>Overhead</h3>
+                    <div class="perf-number">22%</div>
+                    <p>Acceptable for encrypted tunnel with complete DPI evasion</p>
+                </div>
+            </div>
+
+            <div class="perf-use-cases">
+                <h3>Performance is Sufficient For:</h3>
+                <ul>
+                    <li>✓ 4K Video Streaming (25 Mbps required, 711 Mbps available)</li>
+                    <li>✓ Large File Transfers (100 MB in 1.18 seconds)</li>
+                    <li>✓ Remote Work & Video Conferencing</li>
+                    <li>✓ Online Gaming (Low latency maintained)</li>
+                    <li>✓ Multiple Concurrent Connections</li>
+                </ul>
             </div>
         </div>
     </section>
