@@ -89,7 +89,7 @@ impl UnifiedProxyListener {
 
 /// Handle incoming connection with auto-detection
 async fn handle_connection(
-    socket: TcpStream,
+    mut socket: TcpStream,
     peer_addr: SocketAddr,
     supported_types: Vec<ProxyType>,
     server_addr: Option<SocketAddr>,
@@ -99,11 +99,18 @@ async fn handle_connection(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Peek at first bytes to detect protocol
     let mut buf = BytesMut::with_capacity(4096);
-    socket.readable().await?;
 
-    let n = socket.try_read_buf(&mut buf)?;
-    if n == 0 {
-        return Ok(());
+    // Read until we have at least 4 bytes for protocol detection
+    loop {
+        let n = socket.read_buf(&mut buf).await?;
+        if n == 0 {
+            return Ok(());
+        }
+
+        // Need at least 4 bytes to detect protocol
+        if buf.len() >= 4 {
+            break;
+        }
     }
 
     // Detect proxy protocol
