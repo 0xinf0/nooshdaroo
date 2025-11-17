@@ -400,16 +400,17 @@ async fn run_client(
     };
 
     // Create listener with or without tunneling
+    let config_arc = Arc::new(config.clone());
     let listener = if let Some(noise_config) = config.transport {
         info!("Tunnel mode enabled - traffic will be encrypted via Noise Protocol");
         info!("Connecting to server: {}", server_addr);
-        UnifiedProxyListener::new(bind_addr, vec![proxy_type], protocol_id)
+        UnifiedProxyListener::new(bind_addr, vec![proxy_type], protocol_id, config_arc.clone())
             .with_server(server_addr, noise_config)
             .with_controller(client.controller.clone())
     } else {
         warn!("Direct mode - no server tunneling configured");
         warn!("WARNING: Traffic will bypass proxy and connect directly!");
-        UnifiedProxyListener::new(bind_addr, vec![proxy_type], protocol_id)
+        UnifiedProxyListener::new(bind_addr, vec![proxy_type], protocol_id, config_arc.clone())
             .with_controller(client.controller.clone())
     };
 
@@ -510,6 +511,7 @@ async fn run_server(
 
     // Accept and handle connections
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    let config_arc = Arc::new(config);
 
     loop {
         match listener.accept().await {
@@ -517,9 +519,10 @@ async fn run_server(
                 info!("New connection from {}", addr);
                 let noise_cfg = noise_config.clone();
                 let proto_id = protocol_id.clone();
+                let cfg = config_arc.clone();
 
                 tokio::spawn(async move {
-                    if let Err(e) = handle_tunnel_connection(stream, addr, noise_cfg, proto_id).await {
+                    if let Err(e) = handle_tunnel_connection(stream, addr, noise_cfg, proto_id, cfg).await {
                         log::error!("Tunnel connection error from {}: {}", addr, e);
                     }
                 });
@@ -537,6 +540,7 @@ async fn handle_tunnel_connection(
     peer_addr: std::net::SocketAddr,
     noise_config: Option<nooshdaroo::NoiseConfig>,
     protocol_id: nooshdaroo::ProtocolId,
+    config: Arc<nooshdaroo::NooshdarooConfig>,
 ) -> Result<()> {
     use nooshdaroo::{NoiseTransport, ProtocolWrapper};
 
@@ -555,6 +559,17 @@ async fn handle_tunnel_connection(
         .context("Noise handshake failed")?;
 
     log::debug!("Noise handshake completed with {}", peer_addr);
+
+    // Enable TLS session emulation if configured AND protocol is TLS-based
+    let is_tls_protocol = protocol_id.as_str().starts_with("https") ||
+                          protocol_id.as_str().starts_with("tls") ||
+                          protocol_id.as_str() == "dns" || // DNS over TLS
+                          protocol_id.as_str() == "dns-google";
+
+    if config.detection.enable_tls_session_emulation && is_tls_protocol {
+        noise_transport.enable_tls_wrapping();
+        log::info!("Full TLS session emulation enabled for protocol: {}", protocol_id.as_str());
+    }
 
     // Read target information from client
     let target_data = noise_transport

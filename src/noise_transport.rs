@@ -186,6 +186,9 @@ pub struct NoiseTransport {
     transport: TransportState,
     read_buffer: Vec<u8>,
     write_buffer: Vec<u8>,
+
+    /// Optional TLS record layer for full session emulation
+    tls_layer: Option<crate::tls_record_layer::TlsRecordLayer>,
 }
 
 impl NoiseTransport {
@@ -235,6 +238,7 @@ impl NoiseTransport {
             transport,
             read_buffer: vec![0u8; MAX_MESSAGE_SIZE],
             write_buffer: vec![0u8; MAX_MESSAGE_SIZE + 16], // +16 for AEAD tag
+            tls_layer: None, // TLS wrapping disabled by default
         })
     }
 
@@ -284,6 +288,7 @@ impl NoiseTransport {
             transport,
             read_buffer: vec![0u8; MAX_MESSAGE_SIZE],
             write_buffer: vec![0u8; MAX_MESSAGE_SIZE + 16],
+            tls_layer: None, // TLS wrapping disabled by default
         })
     }
 
@@ -443,13 +448,40 @@ impl NoiseTransport {
         Ok(noise.into_transport_mode()?)
     }
 
+    /// Enable full TLS session emulation (wraps all data in TLS Application Data records)
+    pub fn enable_tls_wrapping(&mut self) {
+        self.tls_layer = Some(crate::tls_record_layer::TlsRecordLayer::new());
+        log::info!("TLS session emulation enabled - all Noise data will be wrapped in TLS Application Data records");
+    }
+
+    /// Disable TLS wrapping
+    pub fn disable_tls_wrapping(&mut self) {
+        self.tls_layer = None;
+        log::info!("TLS session emulation disabled");
+    }
+
+    /// Check if TLS wrapping is enabled
+    pub fn is_tls_wrapping_enabled(&self) -> bool {
+        self.tls_layer.is_some()
+    }
+
     /// Read encrypted message from stream
     pub async fn read<S>(&mut self, stream: &mut S) -> Result<Vec<u8>>
     where
         S: AsyncRead + Unpin,
     {
-        let encrypted = Self::read_message(stream, &mut self.read_buffer).await?;
-        let len = self.transport.read_message(encrypted, &mut self.write_buffer)?;
+        // If TLS wrapping is enabled, unwrap TLS Application Data record first
+        let encrypted = if let Some(ref tls) = self.tls_layer {
+            // Read and unwrap TLS record
+            tls.read_application_data(stream).await
+                .map_err(|e| anyhow!("Failed to read TLS record: {}", e))?
+        } else {
+            // Read length-prefixed message as before
+            Self::read_message(stream, &mut self.read_buffer).await?.to_vec()
+        };
+
+        // Decrypt Noise payload
+        let len = self.transport.read_message(&encrypted, &mut self.write_buffer)?;
         Ok(self.write_buffer[..len].to_vec())
     }
 
@@ -462,8 +494,18 @@ impl NoiseTransport {
             return Err(anyhow!("Message too large: {} > {}", data.len(), MAX_MESSAGE_SIZE));
         }
 
+        // Encrypt with Noise
         let len = self.transport.write_message(data, &mut self.write_buffer)?;
-        Self::write_message(stream, &self.write_buffer[..len]).await
+        let noise_payload = &self.write_buffer[..len];
+
+        // If TLS wrapping is enabled, wrap in TLS Application Data record
+        if let Some(ref tls) = self.tls_layer {
+            tls.write_application_data(stream, noise_payload).await
+                .map_err(|e| anyhow!("Failed to write TLS record: {}", e))
+        } else {
+            // Write length-prefixed message as before
+            Self::write_message(stream, noise_payload).await
+        }
     }
 
     /// Read length-prefixed message (2-byte big-endian length + payload)

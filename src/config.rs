@@ -228,6 +228,11 @@ pub struct DetectionConfig {
     /// Enable TLS SNI masking
     pub enable_tls_sni_masking: bool,
 
+    /// Enable full TLS session emulation (wraps all data in TLS Application Data records)
+    /// This defeats deep packet inspection by making all traffic look like valid TLS 1.3
+    #[serde(default = "default_tls_session_emulation")]
+    pub enable_tls_session_emulation: bool,
+
     /// Suspicion threshold for adaptive switching
     pub suspicion_threshold: f64,
 
@@ -238,12 +243,17 @@ pub struct DetectionConfig {
     pub decoy_traffic_rate: f64,
 }
 
+fn default_tls_session_emulation() -> bool {
+    true // Enable by default for maximum evasion
+}
+
 impl Default for DetectionConfig {
     fn default() -> Self {
         Self {
             enable_fingerprint_randomization: true,
             enable_timing_randomization: true,
             enable_tls_sni_masking: false,
+            enable_tls_session_emulation: true, // Enabled by default
             suspicion_threshold: 0.7,
             enable_decoy_traffic: false,
             decoy_traffic_rate: 0.1,

@@ -83,6 +83,7 @@ pub mod shapeshift;
 pub mod socks5;
 pub mod socat;
 pub mod strategy;
+pub mod tls_record_layer;
 pub mod traceroute;
 pub mod traffic;
 pub mod udp_proxy;

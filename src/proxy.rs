@@ -35,11 +35,12 @@ pub struct UnifiedProxyListener {
     noise_config: Option<crate::noise_transport::NoiseConfig>,
     protocol_id: crate::ProtocolId,
     controller: Option<Arc<RwLock<crate::ShapeShiftController>>>,
+    config: Arc<crate::NooshdarooConfig>,
 }
 
 impl UnifiedProxyListener {
     /// Create new unified proxy listener
-    pub fn new(listen_addr: SocketAddr, proxy_types: Vec<ProxyType>, protocol_id: crate::ProtocolId) -> Self {
+    pub fn new(listen_addr: SocketAddr, proxy_types: Vec<ProxyType>, protocol_id: crate::ProtocolId, config: Arc<crate::NooshdarooConfig>) -> Self {
         Self {
             listen_addr,
             proxy_types,
@@ -47,6 +48,7 @@ impl UnifiedProxyListener {
             noise_config: None,
             protocol_id,
             controller: None,
+            config,
         }
     }
 
@@ -78,8 +80,9 @@ impl UnifiedProxyListener {
             let protocol_id = self.protocol_id.clone();
 
             let controller_clone = self.controller.clone();
+            let config = self.config.clone();
             tokio::spawn(async move {
-                if let Err(e) = handle_connection(socket, peer_addr, proxy_types, server_addr, noise_config, protocol_id, controller_clone).await {
+                if let Err(e) = handle_connection(socket, peer_addr, proxy_types, server_addr, noise_config, protocol_id, controller_clone, config).await {
                     log::error!("Connection error from {}: {}", peer_addr, e);
                 }
             });
@@ -96,6 +99,7 @@ async fn handle_connection(
     noise_config: Option<crate::noise_transport::NoiseConfig>,
     protocol_id: crate::ProtocolId,
     controller: Option<Arc<RwLock<crate::ShapeShiftController>>>,
+    config: Arc<crate::NooshdarooConfig>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Peek at first bytes to detect protocol
     let mut buf = BytesMut::with_capacity(4096);
@@ -126,7 +130,7 @@ async fn handle_connection(
     log::debug!("Detected {:?} proxy from {}", proxy_type, peer_addr);
 
     match proxy_type {
-        ProxyType::Socks5 => handle_socks5(socket, buf, peer_addr, server_addr, noise_config, protocol_id, controller).await,
+        ProxyType::Socks5 => handle_socks5(socket, buf, peer_addr, server_addr, noise_config, protocol_id, controller, config).await,
         ProxyType::Http => handle_http(socket, buf, peer_addr).await,
         ProxyType::Transparent => handle_transparent(socket, buf, peer_addr).await,
     }
@@ -177,6 +181,7 @@ async fn handle_socks5(
     noise_config: Option<crate::noise_transport::NoiseConfig>,
     protocol_id: crate::ProtocolId,
     controller: Option<Arc<RwLock<crate::ShapeShiftController>>>,
+    config: Arc<crate::NooshdarooConfig>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::socks5::{socks5_handshake, connect_target, send_reply, copy_bidirectional, Command, ReplyCode, PrefixedStream};
     use crate::noise_transport::NoiseTransport;
@@ -224,8 +229,20 @@ async fn handle_socks5(
 
                 // Perform Noise handshake with protocol wrapping
                 let mut noise_transport = match NoiseTransport::client_handshake(&mut server_stream, &noise_config, Some(&mut protocol_wrapper)).await {
-                    Ok(transport) => {
+                    Ok(mut transport) => {
                         log::debug!("Noise handshake completed with server using {}", protocol_id.as_str());
+
+                        // Enable TLS session emulation if configured AND protocol is TLS-based
+                        let is_tls_protocol = protocol_id.as_str().starts_with("https") ||
+                                              protocol_id.as_str().starts_with("tls") ||
+                                              protocol_id.as_str() == "dns" || // DNS over TLS
+                                              protocol_id.as_str() == "dns-google";
+
+                        if config.detection.enable_tls_session_emulation && is_tls_protocol {
+                            transport.enable_tls_wrapping();
+                            log::info!("Full TLS session emulation enabled for protocol: {}", protocol_id.as_str());
+                        }
+
                         transport
                     }
                     Err(e) => {
