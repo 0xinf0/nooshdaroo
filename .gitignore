@@ -61,3 +61,8 @@ Desktop.ini
 
 # Benchmarks
 criterion/
+
+# Reference materials
+RFCs.docset/
+RFCs.docset-*.tgz
+RFCs.docset-v2.0.0.tgz
