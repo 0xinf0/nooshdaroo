@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-11-17
+
 ### Added
 - **IPv6 Support** - Full support for IPv6 destinations through SOCKS5 proxy
   - Client formats IPv6 addresses with RFC-compliant bracket notation `[ipv6]:port`
