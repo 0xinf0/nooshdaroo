@@ -837,17 +837,30 @@ fn generate_config_files(
             r#"# Nooshdaroo Server Configuration
 # Generated: {}
 
+mode = "server"
+protocol_dir = "protocols"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+password = "nooshdaroo-server-secret"
+
 [server]
 listen_addr = "{}"
+forward_addr = "127.0.0.1:0"
 
 [transport]
 pattern = "{}"
 local_private_key = "{}"   # 🔒 KEEP SECRET!
 
-# Optional: Protocol shape-shifting
-[shapeshift]
-strategy = "adaptive"
-initial_protocol = "https"
+[socks]
+listen_addr = "127.0.0.1:0"
+server_address = "0.0.0.0:0"
+auth_required = false
+
+[shapeshift.strategy]
+type = "adaptive"
+protocol = "https"
 "#,
             chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
             server_addr,
@@ -876,24 +889,26 @@ initial_protocol = "https"
             r#"# Nooshdaroo Client Configuration
 # Generated: {}
 
-[client]
-bind_address = "{}"
+mode = "client"
+protocol_dir = "protocols"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+password = "nooshdaroo-client-secret"
+
+[socks]
+listen_addr = "{}"
 server_address = "{}"
-proxy_type = "socks5"
+auth_required = false
 
 [transport]
 pattern = "{}"
 remote_public_key = "{}"   # Server's public key
 
-# Optional: Application profile
-[traffic]
-application_profile = "zoom"
-enabled = true
-
-# Optional: Adaptive bandwidth
-[bandwidth]
-adaptive_quality = true
-initial_quality = "high"
+[shapeshift.strategy]
+type = "fixed"
+protocol = "https"
 "#,
             chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
             client_addr,
