@@ -431,13 +431,20 @@ async fn run_server(
     max_ports: usize,
     cli_private_key: Option<&str>,
 ) -> Result<()> {
-    info!("Starting Nooshdaroo server on {}", bind);
-
     let mut config = if let Some(path) = config_path {
         NooshdarooConfig::from_file(&path)?
     } else {
         NooshdarooConfig::default()
     };
+
+    // Use config file's listen_addr if available, otherwise use CLI bind argument
+    let bind_addr = if let Some(ref server_config) = config.server {
+        server_config.listen_addr.to_string()
+    } else {
+        bind.to_string()
+    };
+
+    info!("Starting Nooshdaroo server on {}", bind_addr);
 
     // If private key is provided via CLI, override config
     if let Some(key) = cli_private_key {
@@ -495,12 +502,12 @@ async fn run_server(
         info!("Noise Protocol encryption enabled - ready to accept encrypted tunnels");
     }
 
-    info!("Nooshdaroo server ready - listening on {}", bind);
+    info!("Nooshdaroo server ready - listening on {}", bind_addr);
     info!("Protocols loaded: ready to receive shape-shifted traffic");
     info!("Server protocol: {}", protocol_id.as_str());
 
     // Accept and handle connections
-    let listener = tokio::net::TcpListener::bind(bind).await?;
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
 
     loop {
         match listener.accept().await {
