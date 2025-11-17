@@ -2,7 +2,7 @@
 
 **Status**: Production-ready for mobile integration
 **Last Updated**: 2025-11-16
-**Binary**: `target/release/nooshdaroo` (v0.1.0)
+**Binary**: `target/release/nooshdaroo` (v0.2.0)
 
 ---
 

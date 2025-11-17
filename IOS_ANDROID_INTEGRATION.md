@@ -1,7 +1,7 @@
 # iOS & Android Integration Guide
 
 **Nooshdaroo Mobile SDK Integration**
-**Version**: 0.1.0
+**Version**: 0.2.0
 **Last Updated**: 2025-11-16
 
 ---
@@ -1614,5 +1614,5 @@ config.traffic_shaping = None;  // Disable for max throughput
 ---
 
 **Last Updated**: 2025-11-16
-**Version**: 0.1.0
+**Version**: 0.2.0
 **Status**: Production Ready

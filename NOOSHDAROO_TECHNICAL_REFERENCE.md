@@ -1,6 +1,6 @@
 # Nooshdaroo Technical Reference
 
-**Version 0.1.0**
+**Version 0.2.0**
 **Protocol Shape-Shifting SOCKS Proxy System**
 **Author:** Sina Rabbani
 **Repository:** https://github.com/sinarabbaani/Nooshdaroo
@@ -1454,7 +1454,7 @@ nooshdaroo_stop();
 
 ```toml
 # Nooshdaroo Configuration File
-# Version: 0.1.0
+# Version: 0.2.0
 
 # ─────────────────────────────────────────────────────────
 # Client Configuration

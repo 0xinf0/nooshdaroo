@@ -334,4 +334,4 @@ Nooshdaroo System
 
 **Status**: 🟡 Partial (Core infrastructure complete, proxy integration pending)
 **Last Updated**: November 15, 2025
-**Version**: 0.1.0
+**Version**: 0.2.0
