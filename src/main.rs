@@ -84,6 +84,10 @@ enum Commands {
         /// Maximum number of ports to listen on (when --multi-port is enabled)
         #[arg(long, default_value = "20")]
         max_ports: usize,
+
+        /// Base64-encoded Noise protocol private key (overrides config file)
+        #[arg(long, env = "NOOSHDAROO_PRIVATE_KEY")]
+        private_key: Option<String>,
     },
 
     /// Run in socat/relay mode
@@ -122,8 +126,15 @@ enum Commands {
         dir: PathBuf,
     },
 
-    /// Generate Noise protocol keypair for encrypted transport
+    /// Generate Noise protocol keypair (keys only)
     Genkey {
+        /// Output format: text (default), json, or quiet (private key only)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+
+    /// Generate configuration files
+    Genconf {
         /// Save server config to file
         #[arg(long)]
         server_config: Option<PathBuf>,
@@ -134,19 +145,27 @@ enum Commands {
 
         /// Server bind address
         #[arg(long, default_value = "0.0.0.0:8443")]
-        server_bind: String,
+        server_addr: String,
 
         /// Client bind address
         #[arg(long, default_value = "127.0.0.1:1080")]
-        client_bind: String,
+        client_addr: String,
 
-        /// Server address (for client config)
+        /// Remote server address (for client config)
         #[arg(long, default_value = "myserver.com:8443")]
-        server_addr: String,
+        remote_server: String,
 
         /// Noise pattern to use
         #[arg(long, default_value = "nk")]
         pattern: String,
+
+        /// Server private key (base64 encoded)
+        #[arg(long)]
+        server_private_key: Option<String>,
+
+        /// Server public key (base64 encoded, for client config)
+        #[arg(long)]
+        server_public_key: Option<String>,
     },
 
     /// Test all protocol/port combinations to find best path
@@ -222,8 +241,9 @@ async fn main() -> Result<()> {
             bind,
             multi_port,
             max_ports,
+            private_key,
         } => {
-            run_server(cli.config, &bind, multi_port, max_ports).await?;
+            run_server(cli.config, &bind, multi_port, max_ports, private_key.as_deref()).await?;
         }
         Commands::Relay {
             listen,
@@ -241,21 +261,28 @@ async fn main() -> Result<()> {
         Commands::Protocols { dir } => {
             list_protocols(&dir)?;
         }
-        Commands::Genkey {
+        Commands::Genkey { format } => {
+            generate_keypair(&format)?;
+        }
+        Commands::Genconf {
             server_config,
             client_config,
-            server_bind,
-            client_bind,
             server_addr,
+            client_addr,
+            remote_server,
             pattern,
+            server_private_key,
+            server_public_key,
         } => {
-            generate_keypair(
+            generate_config_files(
                 server_config,
                 client_config,
-                &server_bind,
-                &client_bind,
                 &server_addr,
+                &client_addr,
+                &remote_server,
                 &pattern,
+                server_private_key,
+                server_public_key,
             )?;
         }
         Commands::TestPaths {
@@ -402,14 +429,24 @@ async fn run_server(
     bind: &str,
     multi_port: bool,
     max_ports: usize,
+    cli_private_key: Option<&str>,
 ) -> Result<()> {
     info!("Starting Nooshdaroo server on {}", bind);
 
-    let config = if let Some(path) = config_path {
+    let mut config = if let Some(path) = config_path {
         NooshdarooConfig::from_file(&path)?
     } else {
         NooshdarooConfig::default()
     };
+
+    // If private key is provided via CLI, override config
+    if let Some(key) = cli_private_key {
+        info!("Using private key from --private-key argument");
+        if let Some(mut noise_config) = config.transport {
+            noise_config.local_private_key = Some(key.to_string());
+            config.transport = Some(noise_config);
+        }
+    }
 
     // If multi-port mode is enabled, use MultiPortServer
     if multi_port {
@@ -706,94 +743,78 @@ fn list_protocols(dir: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn generate_keypair(
-    server_config_path: Option<PathBuf>,
-    client_config_path: Option<PathBuf>,
-    server_bind: &str,
-    client_bind: &str,
-    server_addr: &str,
-    pattern: &str,
-) -> Result<()> {
-    use std::fs;
-    println!("\n╔════════════════════════════════════════════════════════════════════╗");
-    println!("║        Nooshdaroo Encrypted Transport Key Generator               ║");
-    println!("╚════════════════════════════════════════════════════════════════════╝\n");
-
-    println!("Generating X25519 keypair for Noise Protocol encryption...\n");
-
+/// Generate Noise protocol keypair (keys only)
+fn generate_keypair(format: &str) -> Result<()> {
     let keypair = nooshdaroo::generate_noise_keypair()
         .context("Failed to generate keypair")?;
 
-    // Display keys with clear visual separation
-    println!("┌────────────────────────────────────────────────────────────────────┐");
-    println!("│ PRIVATE KEY (🔒 Keep this SECRET! Never share!)                    │");
-    println!("├────────────────────────────────────────────────────────────────────┤");
-    println!("│ {}  │", keypair.private_key_base64());
-    println!("└────────────────────────────────────────────────────────────────────┘");
-    println!();
+    match format {
+        "private" => {
+            // Only output private key (for piping, like wg genkey)
+            println!("{}", keypair.private_key_base64());
+        }
+        "public" => {
+            // Only output public key
+            println!("{}", keypair.public_key_base64());
+        }
+        "json" => {
+            // JSON output for machine parsing
+            let json = serde_json::json!({
+                "private_key": keypair.private_key_base64(),
+                "public_key": keypair.public_key_base64(),
+                "algorithm": "X25519",
+                "noise_pattern": "nk"
+            });
+            println!("{}", serde_json::to_string_pretty(&json)?);
+        }
+        _ => {
+            // Default: both keys, clean output (like wg genkey + wg pubkey)
+            eprintln!("private key: {}", keypair.private_key_base64());
+            eprintln!("public key: {}", keypair.public_key_base64());
+        }
+    }
 
-    println!("┌────────────────────────────────────────────────────────────────────┐");
-    println!("│ PUBLIC KEY (✅ Safe to share with peers)                           │");
-    println!("├────────────────────────────────────────────────────────────────────┤");
-    println!("│ {}  │", keypair.public_key_base64());
-    println!("└────────────────────────────────────────────────────────────────────┘");
-    println!();
+    Ok(())
+}
 
-    // Configuration examples
-    println!("╔════════════════════════════════════════════════════════════════════╗");
-    println!("║                    CONFIGURATION EXAMPLES                          ║");
+/// Generate configuration files
+fn generate_config_files(
+    server_config_path: Option<PathBuf>,
+    client_config_path: Option<PathBuf>,
+    server_addr: &str,
+    client_addr: &str,
+    remote_server: &str,
+    pattern: &str,
+    cli_server_private_key: Option<String>,
+    cli_server_public_key: Option<String>,
+) -> Result<()> {
+    use std::fs;
+
+    // If keys not provided via CLI, generate new keypair
+    let (server_private_key, server_public_key) = if let (Some(priv_key), Some(pub_key)) =
+        (cli_server_private_key, cli_server_public_key) {
+        (priv_key, pub_key)
+    } else {
+        let keypair = nooshdaroo::generate_noise_keypair()
+            .context("Failed to generate keypair")?;
+        (keypair.private_key_base64(), keypair.public_key_base64())
+    };
+
+    println!("\n╔════════════════════════════════════════════════════════════════════╗");
+    println!("║        Nooshdaroo Configuration File Generator                    ║");
     println!("╚════════════════════════════════════════════════════════════════════╝\n");
 
-    println!("📋 COPY THIS TO YOUR SERVER CONFIG (server.toml):");
-    println!("─────────────────────────────────────────────────────────────────────");
-    println!("[server]");
-    println!("bind = \"0.0.0.0:8443\"");
-    println!();
-    println!("[transport]");
-    println!("pattern = \"nk\"              # Server authentication (recommended)");
-    println!("local_private_key = \"{}\"", keypair.private_key_base64());
-    println!("─────────────────────────────────────────────────────────────────────\n");
-
-    println!("📋 COPY THIS TO YOUR CLIENT CONFIG (client.toml):");
-    println!("─────────────────────────────────────────────────────────────────────");
-    println!("[client]");
-    println!("bind_address = \"127.0.0.1:1080\"");
-    println!("server_address = \"myserver.com:8443\"");
-    println!();
-    println!("[transport]");
-    println!("pattern = \"nk\"              # Must match server pattern");
-    println!("remote_public_key = \"{}\"", keypair.public_key_base64());
-    println!("─────────────────────────────────────────────────────────────────────\n");
-
-    println!("💡 AVAILABLE PATTERNS:");
-    println!("  • nk  - Server authentication (recommended for most users)");
-    println!("  • xx  - Anonymous encryption (no authentication)");
-    println!("  • kk  - Mutual authentication (both sides verify)");
-    println!();
-
-    println!("📖 For more information:");
-    println!("  • Read NOISE_TRANSPORT.md");
-    println!("  • Check examples/ directory for sample configs");
-    println!();
-
-    println!("🔒 SECURITY REMINDER:");
-    println!("  ⚠️  NEVER commit private keys to version control!");
-    println!("  ⚠️  Store private keys with permissions 600 (chmod 600 server.toml)");
-    println!("  ⚠️  Use different keys for dev/staging/production");
-    println!("  ✅  Rotate keys every 90 days for best security");
-    println!();
-
-    // Save to files if requested
+    // Save server config if requested
     if let Some(ref path) = server_config_path {
         let server_config = format!(
-            r#"# Nooshdaroo Server Configuration with Encrypted Transport
+            r#"# Nooshdaroo Server Configuration
 # Generated: {}
 
 [server]
-bind = "{}"
+listen_addr = "{}"
 
 [transport]
-pattern = "{}"              # Noise protocol pattern
+pattern = "{}"
 local_private_key = "{}"   # 🔒 KEEP SECRET!
 
 # Optional: Protocol shape-shifting
@@ -802,9 +823,9 @@ strategy = "adaptive"
 initial_protocol = "https"
 "#,
             chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-            server_bind,
+            server_addr,
             pattern,
-            keypair.private_key_base64()
+            server_private_key
         );
 
         fs::write(path, server_config)
@@ -819,12 +840,13 @@ initial_protocol = "https"
         }
 
         println!("✅ Server config saved to: {:?}", path);
-        println!("   (permissions set to 600 for security)\n");
+        println!("   (permissions set to 600 for security)");
     }
 
+    // Save client config if requested
     if let Some(ref path) = client_config_path {
         let client_config = format!(
-            r#"# Nooshdaroo Client Configuration with Encrypted Transport
+            r#"# Nooshdaroo Client Configuration
 # Generated: {}
 
 [client]
@@ -833,8 +855,8 @@ server_address = "{}"
 proxy_type = "socks5"
 
 [transport]
-pattern = "{}"                  # Noise protocol pattern (must match server)
-remote_public_key = "{}"       # Server's public key
+pattern = "{}"
+remote_public_key = "{}"   # Server's public key
 
 # Optional: Application profile
 [traffic]
@@ -847,19 +869,19 @@ adaptive_quality = true
 initial_quality = "high"
 "#,
             chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-            client_bind,
-            server_addr,
+            client_addr,
+            remote_server,
             pattern,
-            keypair.public_key_base64()
+            server_public_key
         );
 
         fs::write(path, client_config)
             .with_context(|| format!("Failed to write client config to {:?}", path))?;
 
         println!("✅ Client config saved to: {:?}", path);
-        println!();
     }
 
+    println!();
     if server_config_path.is_some() || client_config_path.is_some() {
         println!("🚀 QUICK START:");
         if let Some(ref path) = server_config_path {

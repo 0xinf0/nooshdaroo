@@ -1,15 +1,16 @@
 [package]
 name = "nooshdaroo"
-version = "0.1.0"
+version = "0.2.0-alpha"
 edition = "2021"
 authors = ["Sina Rabbani"]
 description = "Protocol Shape-Shifting SOCKS Proxy - Dynamic protocol emulation for encrypted proxy traffic"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-homepage = "https://github.com/sinarabbaani/Nooshdaroo"
-repository = "https://github.com/sinarabbaani/Nooshdaroo"
+homepage = "https://github.com/0xinf0/nooshdaroo"
+repository = "https://github.com/0xinf0/nooshdaroo"
 keywords = ["proxy", "socks", "protocol", "censorship", "obfuscation"]
 categories = ["network-programming", "cryptography", "command-line-utilities"]
+exclude = ["nDPI/", "RFCs.docset/", "*.tgz", "dist/", "target/", "tcpdump_captures/", "sni_captures/", "*.pcap", "test_*.sh", "debug_*.rs", "examples/", "tests/", "website/", "*.toml", "!Cargo.toml"]
 
 [lib]
 name = "nooshdaroo"
