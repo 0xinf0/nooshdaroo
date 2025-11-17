@@ -439,8 +439,10 @@ async fn run_server(
 
     // Use config file's listen_addr if available, otherwise use CLI bind argument
     let bind_addr = if let Some(ref server_config) = config.server {
+        info!("Using listen_addr from config file: {}", server_config.listen_addr);
         server_config.listen_addr.to_string()
     } else {
+        warn!("No [server] section found in config, using CLI bind argument: {}", bind);
         bind.to_string()
     };
 

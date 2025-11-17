@@ -17,4 +17,4 @@ auth_required = false
 
 [transport]
 pattern = "nk"
-remote_public_key = "0SFi6DDPeASU6HWjafauihAFd7RJLAbuDFiVs9r4cQs="
+remote_public_key = "4wIWM/RDNNY1GhBqK3eLgFBznWzq7RIhaPwhUy9Cpn8="
