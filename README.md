@@ -71,6 +71,22 @@ Available profiles: `corporate`, `airport`, `hotel`, `china`, `iran`, `russia`
 
 ---
 
+## ⚠️ Caution
+
+**Nooshdaroo is experimental software and not recommended for security-critical applications.**
+
+While Nooshdaroo implements strong cryptography (Noise Protocol Framework with ChaCha20-Poly1305), it is:
+- Under active development and may contain bugs
+- Not formally audited for security vulnerabilities
+- Primarily intended for research and educational purposes
+- Best suited for non-critical censorship circumvention scenarios
+
+For production use cases requiring high security guarantees, consider well-established VPN solutions (WireGuard, OpenVPN) or Tor.
+
+**Note:** This project builds upon [Proteus](https://github.com/unblockable/proteus) (~70% of TCP proxy architecture), which is also experimental software.
+
+---
+
 ## Features
 
 ### Core Capabilities
@@ -169,13 +185,13 @@ Encrypted tunneling with forward secrecy for sensitive communications.
 
 ## Performance
 
-- **Throughput**: ~800 Mbps on modern hardware
-- **Latency Overhead**: <5ms for encryption
-- **Protocol Switching**: <1ms overhead
-- **Memory Usage**: ~50MB baseline, +10MB per concurrent connection
-- **CPU Usage**: <5% on modern CPU for typical loads
+Performance varies significantly based on:
+- Network conditions and latency between client and server
+- Hardware specifications (CPU, RAM, network bandwidth)
+- Protocol selected for traffic emulation
+- Quality of service (QoS) settings
 
-See [Performance Characteristics](NOOSHDAROO_TECHNICAL_REFERENCE.md#10-performance-characteristics) for detailed benchmarks.
+**Note**: Comprehensive performance benchmarks are under development. The proxy adds encryption overhead (Noise Protocol with ChaCha20-Poly1305) and protocol wrapping which impacts throughput compared to direct connections.
 
 ---
 
