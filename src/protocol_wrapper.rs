@@ -8,13 +8,15 @@ use crate::protocol::ProtocolId;
 use crate::traffic::TrafficShaper;
 use crate::psf::{PsfInterpreter, ProtocolFrame};
 
-// Embed all PSF files at compile time
+// Embed all verified PSF files at compile time
+// Only production-ready protocols validated with nDPI are included
 const DNS_PSF: &str = include_str!("../protocols/dns/dns.psf");
 const DNS_GOOGLE_PSF: &str = include_str!("../protocols/dns/dns_google_com.psf");
 const HTTPS_PSF: &str = include_str!("../protocols/http/https.psf");
 const HTTPS_GOOGLE_PSF: &str = include_str!("../protocols/http/https_google_com.psf");
 const SSH_PSF: &str = include_str!("../protocols/ssh/ssh.psf");
-const WEBSOCKET_PSF: &str = include_str!("../protocols/http/websocket.psf");
+// WebSocket protocol not yet validated - uncomment when ready:
+// const WEBSOCKET_PSF: &str = include_str!("../protocols/http/websocket.psf");
 
 /// Wraps Noise encrypted frames with protocol-specific headers
 pub struct ProtocolWrapper {
@@ -23,6 +25,8 @@ pub struct ProtocolWrapper {
     psf_interpreter: Option<PsfInterpreter>,
     client_frame: Option<ProtocolFrame>,
     server_frame: Option<ProtocolFrame>,
+    client_handshake_frame: Option<ProtocolFrame>,
+    server_handshake_frame: Option<ProtocolFrame>,
 }
 
 /// Map protocol name to embedded PSF content
@@ -40,7 +44,8 @@ fn get_psf_content(protocol: &str) -> Option<&'static str> {
         "ssh" => Some(SSH_PSF),
 
         // HTTP variants
-        "websocket" | "ws" => Some(WEBSOCKET_PSF),
+        // WebSocket not yet validated:
+        // "websocket" | "ws" => Some(WEBSOCKET_PSF),
 
         // Other protocols not yet embedded will use raw Noise frames
         _ => None,
@@ -53,29 +58,37 @@ impl ProtocolWrapper {
         // Try to load PSF interpreter for this protocol
         let protocol_str = protocol_id.as_str();
 
-        let (psf_interpreter, client_frame, server_frame) = if let Some(psf_content) = get_psf_content(protocol_str) {
-            match PsfInterpreter::load_from_string(psf_content) {
-                Ok(interpreter) => {
-                    let client = interpreter.create_frame("CLIENT", "DATA").ok();
-                    let server = interpreter.create_frame("SERVER", "DATA").ok();
+        let (psf_interpreter, client_frame, server_frame, client_handshake_frame, server_handshake_frame) =
+            if let Some(psf_content) = get_psf_content(protocol_str) {
+                match PsfInterpreter::load_from_string(psf_content) {
+                    Ok(interpreter) => {
+                        let client = interpreter.create_frame("CLIENT", "DATA").ok();
+                        let server = interpreter.create_frame("SERVER", "DATA").ok();
 
-                    if client.is_some() && server.is_some() {
-                        log::info!("Successfully loaded embedded PSF for protocol: {}", protocol_str);
-                        (Some(interpreter), client, server)
-                    } else {
-                        log::warn!("Failed to create frames for protocol: {}", protocol_str);
-                        (None, None, None)
+                        // Try to load handshake frames (optional)
+                        let client_handshake = interpreter.create_frame("CLIENT", "HANDSHAKE").ok();
+                        let server_handshake = interpreter.create_frame("SERVER", "HANDSHAKE").ok();
+
+                        if client.is_some() && server.is_some() {
+                            log::info!("Successfully loaded embedded PSF for protocol: {}", protocol_str);
+                            if client_handshake.is_some() {
+                                log::info!("  - Handshake phase available for {}", protocol_str);
+                            }
+                            (Some(interpreter), client, server, client_handshake, server_handshake)
+                        } else {
+                            log::warn!("Failed to create frames for protocol: {}", protocol_str);
+                            (None, None, None, None, None)
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load embedded PSF for {}: {}", protocol_str, e);
+                        (None, None, None, None, None)
                     }
                 }
-                Err(e) => {
-                    log::warn!("Failed to load embedded PSF for {}: {}", protocol_str, e);
-                    (None, None, None)
-                }
-            }
-        } else {
-            log::debug!("No embedded PSF content found for protocol: {}", protocol_str);
-            (None, None, None)
-        };
+            } else {
+                log::debug!("No embedded PSF content found for protocol: {}", protocol_str);
+                (None, None, None, None, None)
+            };
 
         Self {
             protocol_id,
@@ -83,6 +96,8 @@ impl ProtocolWrapper {
             psf_interpreter,
             client_frame,
             server_frame,
+            client_handshake_frame,
+            server_handshake_frame,
         }
     }
 
@@ -228,6 +243,153 @@ impl ProtocolWrapper {
         );
 
         Ok(noise_data.to_vec())
+    }
+
+    /// Generate a handshake message (for protocols that support HANDSHAKE phase)
+    /// Returns None if protocol doesn't have handshake support
+    pub fn generate_client_handshake(&self) -> Option<Vec<u8>> {
+        if let Some(ref frame) = self.client_handshake_frame {
+            match frame.wrap_handshake() {
+                Ok(handshake) => {
+                    log::info!(
+                        "Generated {} ClientHello with SNI for {}",
+                        handshake.len(),
+                        self.protocol_id.as_str()
+                    );
+                    Some(handshake)
+                }
+                Err(e) => {
+                    log::warn!("Failed to generate handshake: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Generate a server handshake response
+    pub fn generate_server_handshake(&self) -> Option<Vec<u8>> {
+        if let Some(ref frame) = self.server_handshake_frame {
+            match frame.wrap_handshake() {
+                Ok(handshake) => {
+                    log::info!(
+                        "Generated {} ServerHello for {}",
+                        handshake.len(),
+                        self.protocol_id.as_str()
+                    );
+                    Some(handshake)
+                }
+                Err(e) => {
+                    log::warn!("Failed to generate server handshake: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Check if protocol supports handshake
+    pub fn has_handshake_support(&self) -> bool {
+        self.client_handshake_frame.is_some()
+    }
+
+    /// Wrap Noise handshake data with protocol handshake format (client side)
+    /// Takes raw Noise handshake bytes and wraps them in protocol-specific handshake
+    pub fn wrap_client_handshake(&mut self, noise_handshake: &[u8]) -> Result<Vec<u8>, Error> {
+        // If protocol has handshake support, use handshake frame
+        if let Some(ref frame) = self.client_handshake_frame {
+            match frame.wrap(noise_handshake) {
+                Ok(wrapped) => {
+                    log::debug!(
+                        "Wrapped {} bytes of Noise handshake into {} bytes using {} client handshake",
+                        noise_handshake.len(),
+                        wrapped.len(),
+                        self.protocol_id.as_str()
+                    );
+                    return Ok(wrapped);
+                }
+                Err(e) => {
+                    log::warn!("PSF client handshake wrapping failed for {}: {}", self.protocol_id.as_str(), e);
+                }
+            }
+        }
+
+        // Fallback: use data frame wrapping
+        self.wrap(noise_handshake)
+    }
+
+    /// Wrap Noise handshake data with protocol handshake format (server side)
+    pub fn wrap_server_handshake(&mut self, noise_handshake: &[u8]) -> Result<Vec<u8>, Error> {
+        // If protocol has handshake support, use handshake frame
+        if let Some(ref frame) = self.server_handshake_frame {
+            match frame.wrap(noise_handshake) {
+                Ok(wrapped) => {
+                    log::debug!(
+                        "Wrapped {} bytes of Noise handshake into {} bytes using {} server handshake",
+                        noise_handshake.len(),
+                        wrapped.len(),
+                        self.protocol_id.as_str()
+                    );
+                    return Ok(wrapped);
+                }
+                Err(e) => {
+                    log::warn!("PSF server handshake wrapping failed for {}: {}", self.protocol_id.as_str(), e);
+                }
+            }
+        }
+
+        // Fallback: use data frame wrapping
+        self.wrap(noise_handshake)
+    }
+
+    /// Unwrap protocol handshake to get Noise handshake data (client side)
+    pub fn unwrap_client_handshake(&self, wrapped_handshake: &[u8]) -> Result<Vec<u8>, Error> {
+        // If protocol has handshake support, use handshake frame
+        if let Some(ref frame) = self.client_handshake_frame {
+            match frame.unwrap(wrapped_handshake) {
+                Ok(unwrapped) => {
+                    log::debug!(
+                        "Unwrapped {} bytes of {} client handshake into {} bytes of Noise data",
+                        wrapped_handshake.len(),
+                        self.protocol_id.as_str(),
+                        unwrapped.len()
+                    );
+                    return Ok(unwrapped);
+                }
+                Err(e) => {
+                    log::warn!("PSF client handshake unwrapping failed for {}: {}", self.protocol_id.as_str(), e);
+                }
+            }
+        }
+
+        // Fallback: use data frame unwrapping
+        self.unwrap(wrapped_handshake)
+    }
+
+    /// Unwrap protocol handshake to get Noise handshake data (server side)
+    pub fn unwrap_server_handshake(&self, wrapped_handshake: &[u8]) -> Result<Vec<u8>, Error> {
+        // If protocol has handshake support, use handshake frame
+        if let Some(ref frame) = self.server_handshake_frame {
+            match frame.unwrap(wrapped_handshake) {
+                Ok(unwrapped) => {
+                    log::debug!(
+                        "Unwrapped {} bytes of {} server handshake into {} bytes of Noise data",
+                        wrapped_handshake.len(),
+                        self.protocol_id.as_str(),
+                        unwrapped.len()
+                    );
+                    return Ok(unwrapped);
+                }
+                Err(e) => {
+                    log::warn!("PSF server handshake unwrapping failed for {}: {}", self.protocol_id.as_str(), e);
+                }
+            }
+        }
+
+        // Fallback: use data frame unwrapping
+        self.unwrap(wrapped_handshake)
     }
 }
 

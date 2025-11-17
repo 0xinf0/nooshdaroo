@@ -378,10 +378,12 @@ async fn run_client(
         info!("Connecting to server: {}", server_addr);
         UnifiedProxyListener::new(bind_addr, vec![proxy_type], protocol_id)
             .with_server(server_addr, noise_config)
+            .with_controller(client.controller.clone())
     } else {
         warn!("Direct mode - no server tunneling configured");
         warn!("WARNING: Traffic will bypass proxy and connect directly!");
         UnifiedProxyListener::new(bind_addr, vec![proxy_type], protocol_id)
+            .with_controller(client.controller.clone())
     };
 
     info!(
@@ -490,16 +492,19 @@ async fn handle_tunnel_connection(
     noise_config: Option<nooshdaroo::NoiseConfig>,
     protocol_id: nooshdaroo::ProtocolId,
 ) -> Result<()> {
-    use nooshdaroo::NoiseTransport;
+    use nooshdaroo::{NoiseTransport, ProtocolWrapper};
 
     // If no noise config, reject connection
     let noise_config = noise_config
         .ok_or_else(|| anyhow::anyhow!("Server not configured for encrypted tunnels"))?;
 
-    log::debug!("Performing Noise handshake with {}", peer_addr);
+    log::debug!("Performing Noise handshake with {} using protocol {}", peer_addr, protocol_id.as_str());
 
-    // Perform server-side Noise handshake
-    let mut noise_transport = NoiseTransport::server_handshake(&mut tunnel_stream, &noise_config)
+    // Create protocol wrapper for handshake wrapping
+    let mut protocol_wrapper = ProtocolWrapper::new(protocol_id.clone(), None);
+
+    // Perform server-side Noise handshake with protocol wrapping
+    let mut noise_transport = NoiseTransport::server_handshake(&mut tunnel_stream, &noise_config, Some(&mut protocol_wrapper))
         .await
         .context("Noise handshake failed")?;
 

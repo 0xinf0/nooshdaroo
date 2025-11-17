@@ -68,6 +68,7 @@
 pub mod app_profiles;
 pub mod bandwidth;
 pub mod config;
+pub mod embedded_keys;
 pub mod json_logger;
 pub mod library;
 pub mod mobile;
@@ -137,7 +138,7 @@ use tokio::sync::RwLock;
 pub struct NooshdarooClient {
     config: NooshdarooConfig,
     library: Arc<ProtocolLibrary>,
-    controller: Arc<RwLock<ShapeShiftController>>,
+    pub controller: Arc<RwLock<ShapeShiftController>>,
 }
 
 impl NooshdarooClient {
