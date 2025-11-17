@@ -100,20 +100,28 @@ async fn handle_connection(
     // Peek at first bytes to detect protocol
     let mut buf = BytesMut::with_capacity(4096);
 
-    // Read until we have at least 4 bytes for protocol detection
+    log::debug!("Reading protocol detection bytes from {}", peer_addr);
+
+    // Read until we have at least 1 byte for protocol detection
     loop {
         let n = socket.read_buf(&mut buf).await?;
+        log::debug!("Read {} bytes from {}, total buffer: {}", n, peer_addr, buf.len());
+
         if n == 0 {
+            log::debug!("Connection closed by {} before protocol detection", peer_addr);
             return Ok(());
         }
 
-        // Need at least 4 bytes to detect protocol
-        if buf.len() >= 4 {
+        // Need at least 1 byte to detect protocol (SOCKS5 only needs first byte = 0x05)
+        if !buf.is_empty() {
+            log::debug!("Got {} bytes for protocol detection from {}", buf.len(), peer_addr);
             break;
         }
     }
 
     // Detect proxy protocol
+    let preview_len = std::cmp::min(buf.len(), 4);
+    log::debug!("Attempting to detect protocol from {} (first {} bytes: {:02x?})", peer_addr, preview_len, &buf[..preview_len]);
     let proxy_type = detect_proxy_type(&buf, &supported_types)?;
     log::debug!("Detected {:?} proxy from {}", proxy_type, peer_addr);
 
@@ -129,11 +137,12 @@ fn detect_proxy_type(
     buf: &BytesMut,
     supported: &[ProxyType],
 ) -> Result<ProxyType, Box<dyn std::error::Error>> {
-    if buf.len() < 4 {
+    if buf.is_empty() {
         return Err("Not enough data to detect protocol".into());
     }
 
     // SOCKS5: First byte is 0x05 (version)
+    // Only need 1 byte to detect SOCKS5
     if buf[0] == 0x05 && supported.contains(&ProxyType::Socks5) {
         return Ok(ProxyType::Socks5);
     }
