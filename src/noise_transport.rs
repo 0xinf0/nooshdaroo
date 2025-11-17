@@ -193,6 +193,7 @@ impl NoiseTransport {
     pub async fn client_handshake<S>(
         stream: &mut S,
         config: &NoiseConfig,
+        protocol_wrapper: Option<&mut crate::protocol_wrapper::ProtocolWrapper>,
     ) -> Result<Self>
     where
         S: AsyncRead + AsyncWrite + Unpin,
@@ -228,7 +229,7 @@ impl NoiseTransport {
         let mut noise = builder.build_initiator()?;
 
         // Perform handshake
-        let transport = Self::perform_handshake(stream, noise, true).await?;
+        let transport = Self::perform_handshake(stream, noise, true, protocol_wrapper).await?;
 
         Ok(Self {
             transport,
@@ -241,6 +242,7 @@ impl NoiseTransport {
     pub async fn server_handshake<S>(
         stream: &mut S,
         config: &NoiseConfig,
+        protocol_wrapper: Option<&mut crate::protocol_wrapper::ProtocolWrapper>,
     ) -> Result<Self>
     where
         S: AsyncRead + AsyncWrite + Unpin,
@@ -276,7 +278,7 @@ impl NoiseTransport {
         let mut noise = builder.build_responder()?;
 
         // Perform handshake
-        let transport = Self::perform_handshake(stream, noise, false).await?;
+        let transport = Self::perform_handshake(stream, noise, false, protocol_wrapper).await?;
 
         Ok(Self {
             transport,
@@ -290,39 +292,147 @@ impl NoiseTransport {
         stream: &mut S,
         mut noise: HandshakeState,
         is_initiator: bool,
+        mut protocol_wrapper: Option<&mut crate::protocol_wrapper::ProtocolWrapper>,
     ) -> Result<TransportState>
     where
         S: AsyncRead + AsyncWrite + Unpin,
     {
         let mut buf = vec![0u8; MAX_MESSAGE_SIZE];
 
+        // STEP 1: Exchange fake protocol handshakes (if protocol wrapper supports it)
+        // This makes DPI think we're doing a real TLS/SSH/etc handshake
+        // CRITICAL: Send RAW without length prefix so DPI sees the real protocol bytes!
+        if let Some(ref mut wrapper) = protocol_wrapper {
+            if wrapper.has_handshake_support() {
+                if is_initiator {
+                    // Client: Send fake ClientHello (RAW, no length prefix)
+                    if let Some(fake_client_hello) = wrapper.generate_client_handshake() {
+                        stream.write_all(&fake_client_hello).await?;
+                        stream.flush().await?;
+                        log::info!("Client: Sent fake protocol ClientHello ({} bytes, RAW)", fake_client_hello.len());
+                    }
+
+                    // Client: Receive fake ServerHello (RAW, fixed size based on protocol)
+                    // For TLS: ServerHello is always 95 bytes for our implementation
+                    let expected_size = 95; // TODO: get from protocol metadata
+                    stream.read_exact(&mut buf[..expected_size]).await?;
+                    log::info!("Client: Received fake protocol ServerHello ({} bytes, RAW)", expected_size);
+                    // We don't validate the ServerHello - just discard it
+                } else {
+                    // Server: Receive fake ClientHello (RAW, fixed size based on protocol)
+                    // For TLS: ClientHello is always 260 bytes for our implementation
+                    let expected_size = 260; // TODO: get from protocol metadata
+                    stream.read_exact(&mut buf[..expected_size]).await?;
+                    log::info!("Server: Received fake protocol ClientHello ({} bytes, RAW)", expected_size);
+                    // We don't validate the ClientHello - just discard it
+
+                    // Server: Send fake ServerHello (RAW, no length prefix)
+                    if let Some(fake_server_hello) = wrapper.generate_server_handshake() {
+                        stream.write_all(&fake_server_hello).await?;
+                        stream.flush().await?;
+                        log::info!("Server: Sent fake protocol ServerHello ({} bytes, RAW)", fake_server_hello.len());
+                    }
+                }
+
+                log::info!("{}: Fake protocol handshake complete, starting Noise handshake wrapped in DATA frames",
+                    if is_initiator { "Client" } else { "Server" });
+            }
+        }
+
+        // STEP 2: Perform real Noise handshake (wrapped in DATA frames if protocol wrapper exists)
         if is_initiator {
             // Initiator sends first message
             let len = noise.write_message(&[], &mut buf)?;
-            Self::write_message(stream, &buf[..len]).await?;
+            let noise_handshake = &buf[..len];
+
+            // Wrap handshake in protocol format if wrapper provided
+            if let Some(wrapper) = protocol_wrapper.as_deref_mut() {
+                let wrapped = wrapper.wrap(noise_handshake)
+                    .map_err(|e| anyhow!("Failed to wrap client handshake: {}", e))?;
+                Self::write_message(stream, &wrapped).await?;
+                log::debug!("Client: Sent wrapped Noise handshake message 1 ({} -> {} bytes)", noise_handshake.len(), wrapped.len());
+            } else {
+                Self::write_message(stream, noise_handshake).await?;
+                log::debug!("Client: Sent raw Noise handshake message 1 ({} bytes)", noise_handshake.len());
+            }
 
             // Receive response
-            let msg = Self::read_message(stream, &mut buf).await?;
-            noise.read_message(msg, &mut [])?;
+            let received = Self::read_message(stream, &mut buf).await?;
+
+            // Unwrap if wrapper provided
+            let msg = if let Some(wrapper) = protocol_wrapper.as_deref() {
+                let unwrapped = wrapper.unwrap(received)
+                    .map_err(|e| anyhow!("Failed to unwrap server handshake: {}", e))?;
+                log::debug!("Client: Received wrapped Noise handshake message 2 ({} -> {} bytes)", received.len(), unwrapped.len());
+                unwrapped
+            } else {
+                log::debug!("Client: Received raw Noise handshake message 2 ({} bytes)", received.len());
+                received.to_vec()
+            };
+
+            noise.read_message(&msg, &mut [])?;
 
             // If XX pattern, send final message
             if !noise.is_handshake_finished() {
                 let len = noise.write_message(&[], &mut buf)?;
-                Self::write_message(stream, &buf[..len]).await?;
+                let noise_handshake = &buf[..len];
+
+                if let Some(wrapper) = protocol_wrapper.as_deref_mut() {
+                    let wrapped = wrapper.wrap(noise_handshake)
+                        .map_err(|e| anyhow!("Failed to wrap client handshake: {}", e))?;
+                    Self::write_message(stream, &wrapped).await?;
+                    log::debug!("Client: Sent wrapped Noise handshake message 3 ({} -> {} bytes)", noise_handshake.len(), wrapped.len());
+                } else {
+                    Self::write_message(stream, noise_handshake).await?;
+                    log::debug!("Client: Sent raw Noise handshake message 3 ({} bytes)", noise_handshake.len());
+                }
             }
         } else {
             // Responder receives first message
-            let msg = Self::read_message(stream, &mut buf).await?;
-            noise.read_message(msg, &mut [])?;
+            let received = Self::read_message(stream, &mut buf).await?;
+
+            // Unwrap if wrapper provided
+            let msg = if let Some(wrapper) = protocol_wrapper.as_deref() {
+                let unwrapped = wrapper.unwrap(received)
+                    .map_err(|e| anyhow!("Failed to unwrap client handshake: {}", e))?;
+                log::debug!("Server: Received wrapped Noise handshake message 1 ({} -> {} bytes)", received.len(), unwrapped.len());
+                unwrapped
+            } else {
+                log::debug!("Server: Received raw Noise handshake message 1 ({} bytes)", received.len());
+                received.to_vec()
+            };
+
+            noise.read_message(&msg, &mut [])?;
 
             // Send response
             let len = noise.write_message(&[], &mut buf)?;
-            Self::write_message(stream, &buf[..len]).await?;
+            let noise_handshake = &buf[..len];
+
+            if let Some(wrapper) = protocol_wrapper.as_deref_mut() {
+                let wrapped = wrapper.wrap(noise_handshake)
+                    .map_err(|e| anyhow!("Failed to wrap server handshake: {}", e))?;
+                Self::write_message(stream, &wrapped).await?;
+                log::debug!("Server: Sent wrapped Noise handshake message 2 ({} -> {} bytes)", noise_handshake.len(), wrapped.len());
+            } else {
+                Self::write_message(stream, noise_handshake).await?;
+                log::debug!("Server: Sent raw Noise handshake message 2 ({} bytes)", noise_handshake.len());
+            }
 
             // If XX pattern, receive final message
             if !noise.is_handshake_finished() {
-                let msg = Self::read_message(stream, &mut buf).await?;
-                noise.read_message(msg, &mut [])?;
+                let received = Self::read_message(stream, &mut buf).await?;
+
+                let msg = if let Some(wrapper) = protocol_wrapper.as_deref() {
+                    let unwrapped = wrapper.unwrap(received)
+                        .map_err(|e| anyhow!("Failed to unwrap client handshake: {}", e))?;
+                    log::debug!("Server: Received wrapped Noise handshake message 3 ({} -> {} bytes)", received.len(), unwrapped.len());
+                    unwrapped
+                } else {
+                    log::debug!("Server: Received raw Noise handshake message 3 ({} bytes)", received.len());
+                    received.to_vec()
+                };
+
+                noise.read_message(&msg, &mut [])?;
             }
         }
 
@@ -537,11 +647,11 @@ mod tests {
 
         // Perform handshakes concurrently
         let client_handle = tokio::spawn(async move {
-            NoiseTransport::client_handshake(&mut client_stream, &client_config).await
+            NoiseTransport::client_handshake(&mut client_stream, &client_config, None).await
         });
 
         let server_handle = tokio::spawn(async move {
-            NoiseTransport::server_handshake(&mut server_stream, &server_config).await
+            NoiseTransport::server_handshake(&mut server_stream, &server_config, None).await
         });
 
         let mut client_transport = client_handle.await.unwrap().unwrap();
@@ -591,11 +701,11 @@ mod tests {
         let (mut client_stream, mut server_stream) = duplex(8192);
 
         let client_handle = tokio::spawn(async move {
-            NoiseTransport::client_handshake(&mut client_stream, &client_config).await
+            NoiseTransport::client_handshake(&mut client_stream, &client_config, None).await
         });
 
         let server_handle = tokio::spawn(async move {
-            NoiseTransport::server_handshake(&mut server_stream, &server_config).await
+            NoiseTransport::server_handshake(&mut server_stream, &server_config, None).await
         });
 
         let client_transport = client_handle.await.unwrap().unwrap();

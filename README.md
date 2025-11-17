@@ -9,6 +9,10 @@ Nooshdaroo (نوشدارو, Persian for "antidote") disguises encrypted SOCKS5 t
 [![nDPI Validated](https://img.shields.io/badge/nDPI%20Validated-Google%20Protocol-success.svg)](NDPI_BASELINE_SUCCESS.md)
 [![DPI Confidence](https://img.shields.io/badge/DPI%20Confidence-Validated-brightgreen.svg)](NDPI_BASELINE_SUCCESS.md)
 
+## 🌐 Website
+
+**→ [https://nooshdaroo.net/](https://nooshdaroo.net/)** - Download signed binaries, verify GPG signatures, and learn more about the antidote to censorship.
+
 ## 📘 Complete Documentation
 
 **→ [NOOSHDAROO TECHNICAL REFERENCE](NOOSHDAROO_TECHNICAL_REFERENCE.md)** - Everything you need to know about Nooshdaroo: architecture, deployment, API reference, and configuration.
@@ -23,8 +27,8 @@ Nooshdaroo (نوشدارو, Persian for "antidote") disguises encrypted SOCKS5 t
 
 ```bash
 # Clone repository
-git clone https://github.com/sinarabbaani/Nooshdaroo.git
-cd Nooshdaroo
+git clone https://github.com/0xinf0/nooshdaroo.git
+cd nooshdaroo
 
 # Build from source
 cargo build --release
@@ -221,7 +225,7 @@ Choose whichever works best for your use case.
 ## Credits
 
 - **Author**: Sina Rabbani
-- **Repository**: https://github.com/sinarabbaani/Nooshdaroo
+- **Repository**: https://github.com/0xinf0/nooshdaroo
 - **Based on**: [Proteus](https://github.com/unblockable/proteus) by Unblockable
 - **Inspiration**: [Rathole](https://github.com/rapiz1/rathole) for Noise Protocol implementation
 

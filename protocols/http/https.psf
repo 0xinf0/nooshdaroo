@@ -1,34 +1,301 @@
-// HTTPS-like encrypted data transfer protocol
-// Emulates TLS 1.3 application data flow (RFC 8446)
-// This PSF makes encrypted proxy traffic look like HTTPS
+// Complete TLS 1.3 ClientHello that fools nDPI
+// Based on real Chrome/Firefox handshakes
+// Target size: ~350-400 bytes (vs our current 49 bytes!)
 
 @SEGMENT.FORMATS
 
-  // TLS Application Data frame
-  DEFINE TlsAppData
-    { NAME: content_type   ; TYPE: u8 },       // 0x17 for application data
-    { NAME: version        ; TYPE: u16 },      // 0x0303 for TLS 1.2 compat
-    { NAME: length         ; TYPE: u16 },      // Payload length
-    { NAME: encrypted_data ; TYPE: [u8; length.size_of] },
-    { NAME: auth_tag       ; TYPE: [u8; 16] }; // Poly1305 MAC
+  // Complete TLS 1.3 ClientHello with all critical extensions
+  DEFINE Tls13ClientHello
+    // TLS Record Layer
+    { NAME: content_type;     TYPE: u8 },      // 0x16 = Handshake
+    { NAME: record_version;   TYPE: u16 },     // 0x0301 = TLS 1.0 (for compat)
+    { NAME: record_length;    TYPE: u16 },     // Total record length
+
+    // Handshake Protocol
+    { NAME: handshake_type;   TYPE: u8 },      // 0x01 = ClientHello
+    { NAME: handshake_length; TYPE: u24 },     // Handshake message length
+    { NAME: client_version;   TYPE: u16 },     // 0x0303 = TLS 1.2
+    { NAME: client_random;    TYPE: [u8; 32] }, // 32 bytes random
+
+    // Session ID
+    { NAME: session_id_length; TYPE: u8 },     // 32 bytes (common)
+    { NAME: session_id;       TYPE: [u8; 32] }, // Session ID (random)
+
+    // Cipher Suites (32 bytes = 16 ciphers)
+    { NAME: cipher_suites_length; TYPE: u16 }, // 32 bytes
+    { NAME: cipher_suites;    TYPE: [u8; 32] }, // TLS 1.3 + common ciphers
+
+    // Compression Methods
+    { NAME: compression_length; TYPE: u8 },    // 1 byte
+    { NAME: compression_methods; TYPE: u8 },   // 0x00 = null
+
+    // Extensions (this is where the magic happens!)
+    { NAME: extensions_length; TYPE: u16 },    // Total extensions length
+
+    // Extension 1: server_name (SNI)
+    { NAME: ext_sni_type;     TYPE: u16 },     // 0x0000
+    { NAME: ext_sni_length;   TYPE: u16 },     // Length of SNI data
+    { NAME: sni_list_length;  TYPE: u16 },     // Server name list length
+    { NAME: sni_name_type;    TYPE: u8 },      // 0x00 = host_name
+    { NAME: sni_name_length;  TYPE: u16 },     // Length of server name
+    { NAME: sni_name;         TYPE: [u8; 14] }, // "www.google.com"
+
+    // Extension 2: ec_point_formats
+    { NAME: ext_ecpf_type;    TYPE: u16 },     // 0x000b
+    { NAME: ext_ecpf_length;  TYPE: u16 },     // 4 bytes
+    { NAME: ecpf_list_length; TYPE: u8 },      // 3 formats
+    { NAME: ecpf_formats;     TYPE: [u8; 3] }, // uncompressed, ansiX962_compressed_prime, ansiX962_compressed_char2
+
+    // Extension 3: supported_groups
+    { NAME: ext_groups_type;  TYPE: u16 },     // 0x000a
+    { NAME: ext_groups_length; TYPE: u16 },    // Length
+    { NAME: groups_list_length; TYPE: u16 },   // 10 bytes (5 groups)
+    { NAME: groups_list;      TYPE: [u8; 10] }, // x25519, secp256r1, x448, secp384r1, secp521r1
+
+    // Extension 4: signature_algorithms
+    { NAME: ext_sig_type;     TYPE: u16 },     // 0x000d
+    { NAME: ext_sig_length;   TYPE: u16 },     // Length
+    { NAME: sig_list_length;  TYPE: u16 },     // 24 bytes (12 algorithms)
+    { NAME: sig_algorithms;   TYPE: [u8; 24] }, // rsa_pss_rsae_sha256, ecdsa_secp256r1_sha256, etc.
+
+    // Extension 5: session_ticket
+    { NAME: ext_ticket_type;  TYPE: u16 },     // 0x0023
+    { NAME: ext_ticket_length; TYPE: u16 },    // 0 (empty)
+
+    // Extension 6: encrypt_then_mac
+    { NAME: ext_etm_type;     TYPE: u16 },     // 0x0016
+    { NAME: ext_etm_length;   TYPE: u16 },     // 0 (empty)
+
+    // Extension 7: extended_master_secret
+    { NAME: ext_ems_type;     TYPE: u16 },     // 0x0017
+    { NAME: ext_ems_length;   TYPE: u16 },     // 0 (empty)
+
+    // Extension 8: supported_versions (CRITICAL for TLS 1.3!)
+    { NAME: ext_versions_type; TYPE: u16 },    // 0x002b
+    { NAME: ext_versions_length; TYPE: u16 },  // 5 bytes
+    { NAME: versions_list_length; TYPE: u8 },  // 4 bytes
+    { NAME: versions_list;    TYPE: [u8; 4] }, // TLS 1.3 (0x0304), TLS 1.2 (0x0303)
+
+    // Extension 9: psk_key_exchange_modes
+    { NAME: ext_psk_modes_type; TYPE: u16 },   // 0x002d
+    { NAME: ext_psk_modes_length; TYPE: u16 }, // 2 bytes
+    { NAME: psk_modes_length; TYPE: u8 },      // 1 mode
+    { NAME: psk_modes;        TYPE: u8 },      // 0x01 = psk_dhe_ke
+
+    // Extension 10: key_share (THE MOST CRITICAL FOR TLS 1.3!)
+    { NAME: ext_keyshare_type; TYPE: u16 },    // 0x0033
+    { NAME: ext_keyshare_length; TYPE: u16 },  // Length
+    { NAME: keyshare_list_length; TYPE: u16 }, // Client key share length
+    { NAME: keyshare_group;   TYPE: u16 },     // 0x001d = x25519
+    { NAME: keyshare_key_length; TYPE: u16 },  // 32 bytes
+    { NAME: keyshare_key;     TYPE: [u8; 32] }; // x25519 public key (RANDOM!)
+
+  // TLS 1.3 ServerHello (simplified but realistic)
+  DEFINE Tls13ServerHello
+    { NAME: content_type;     TYPE: u8 },      // 0x16 = Handshake
+    { NAME: record_version;   TYPE: u16 },     // 0x0303 = TLS 1.2
+    { NAME: record_length;    TYPE: u16 },     // Record length
+    { NAME: handshake_type;   TYPE: u8 },      // 0x02 = ServerHello
+    { NAME: handshake_length; TYPE: u24 },     // Message length
+    { NAME: server_version;   TYPE: u16 },     // 0x0303 = TLS 1.2
+    { NAME: server_random;    TYPE: [u8; 32] }, // Server random
+    { NAME: session_id_length; TYPE: u8 },     // 0 (no session ID)
+    { NAME: cipher_suite;     TYPE: u16 },     // Selected cipher
+    { NAME: compression;      TYPE: u8 },      // 0x00 = null
+    { NAME: extensions_length; TYPE: u16 },    // Extensions
+    // Extension: supported_versions (must be present for TLS 1.3)
+    { NAME: ext_version_type; TYPE: u16 },     // 0x002b
+    { NAME: ext_version_length; TYPE: u16 },   // 2 bytes
+    { NAME: selected_version; TYPE: u16 },     // 0x0304 = TLS 1.3
+    // Extension: key_share (server's public key)
+    { NAME: ext_keyshare_type; TYPE: u16 },    // 0x0033
+    { NAME: ext_keyshare_length; TYPE: u16 },  // 36 bytes
+    { NAME: keyshare_group;   TYPE: u16 },     // 0x001d = x25519
+    { NAME: keyshare_key_length; TYPE: u16 },  // 32 bytes
+    { NAME: keyshare_key;     TYPE: [u8; 32] }; // x25519 public key
+
+  // TLS 1.3 Application Data (encrypted)
+  DEFINE Tls13AppData
+    { NAME: content_type;     TYPE: u8 },      // 0x17 = application_data
+    { NAME: record_version;   TYPE: u16 },     // 0x0303 = TLS 1.2
+    { NAME: record_length;    TYPE: u16 },     // Payload length
+    { NAME: payload;          TYPE: [u8; 1024] }; // Encrypted data (fixed size)
 
 @SEGMENT.SEMANTICS
 
-  { FORMAT: TlsAppData; FIELD: content_type;   SEMANTIC: FIXED_VALUE(0x17) };
-  { FORMAT: TlsAppData; FIELD: version;        SEMANTIC: FIXED_VALUE(0x0303) };
-  { FORMAT: TlsAppData; FIELD: length;         SEMANTIC: LENGTH };
-  { FORMAT: TlsAppData; FIELD: encrypted_data; SEMANTIC: PAYLOAD };
+  // ===== ClientHello Semantics =====
+
+  // TLS Record Layer
+  { FORMAT: Tls13ClientHello; FIELD: content_type;     SEMANTIC: FIXED_VALUE(0x16) };
+  { FORMAT: Tls13ClientHello; FIELD: record_version;   SEMANTIC: FIXED_VALUE(0x0301) };
+  { FORMAT: Tls13ClientHello; FIELD: record_length;    SEMANTIC: LENGTH };
+
+  // Handshake Protocol
+  { FORMAT: Tls13ClientHello; FIELD: handshake_type;   SEMANTIC: FIXED_VALUE(0x01) };
+  { FORMAT: Tls13ClientHello; FIELD: handshake_length; SEMANTIC: LENGTH };
+  { FORMAT: Tls13ClientHello; FIELD: client_version;   SEMANTIC: FIXED_VALUE(0x0303) };
+  { FORMAT: Tls13ClientHello; FIELD: client_random;    SEMANTIC: RANDOM };
+
+  // Session ID
+  { FORMAT: Tls13ClientHello; FIELD: session_id_length; SEMANTIC: FIXED_VALUE(32) };
+  { FORMAT: Tls13ClientHello; FIELD: session_id;       SEMANTIC: RANDOM };
+
+  // Cipher Suites (TLS 1.3 ciphers + common ones)
+  { FORMAT: Tls13ClientHello; FIELD: cipher_suites_length; SEMANTIC: FIXED_VALUE(32) };
+  { FORMAT: Tls13ClientHello; FIELD: cipher_suites; SEMANTIC: FIXED_BYTES([
+    0x13, 0x01,  // TLS_AES_128_GCM_SHA256
+    0x13, 0x02,  // TLS_AES_256_GCM_SHA384
+    0x13, 0x03,  // TLS_CHACHA20_POLY1305_SHA256
+    0xc0, 0x2c,  // TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+    0xc0, 0x30,  // TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+    0x00, 0x9f,  // TLS_DHE_RSA_WITH_AES_256_GCM_SHA384
+    0xcc, 0xa9,  // TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+    0xcc, 0xa8,  // TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+    0xcc, 0xaa,  // TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+    0xc0, 0x2b,  // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+    0xc0, 0x2f,  // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    0x00, 0x9e,  // TLS_DHE_RSA_WITH_AES_128_GCM_SHA256
+    0xc0, 0x24,  // TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384
+    0xc0, 0x28,  // TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384
+    0x00, 0x6b,  // TLS_DHE_RSA_WITH_AES_256_CBC_SHA256
+    0xc0, 0x23   // TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+  ]) };
+
+  // Compression
+  { FORMAT: Tls13ClientHello; FIELD: compression_length; SEMANTIC: FIXED_VALUE(1) };
+  { FORMAT: Tls13ClientHello; FIELD: compression_methods; SEMANTIC: FIXED_VALUE(0x00) };
+
+  // Extensions Length (calculated automatically)
+  { FORMAT: Tls13ClientHello; FIELD: extensions_length; SEMANTIC: LENGTH };
+
+  // Extension 1: SNI
+  { FORMAT: Tls13ClientHello; FIELD: ext_sni_type;     SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: Tls13ClientHello; FIELD: ext_sni_length;   SEMANTIC: LENGTH };
+  { FORMAT: Tls13ClientHello; FIELD: sni_list_length;  SEMANTIC: LENGTH };
+  { FORMAT: Tls13ClientHello; FIELD: sni_name_type;    SEMANTIC: FIXED_VALUE(0x00) };
+  { FORMAT: Tls13ClientHello; FIELD: sni_name_length;  SEMANTIC: FIXED_VALUE(14) };
+  { FORMAT: Tls13ClientHello; FIELD: sni_name; SEMANTIC: FIXED_BYTES([
+    0x77, 0x77, 0x77, 0x2e,  // "www."
+    0x67, 0x6f, 0x6f, 0x67,  // "goog"
+    0x6c, 0x65, 0x2e, 0x63,  // "le.c"
+    0x6f, 0x6d               // "om"
+  ]) };
+
+  // Extension 2: ec_point_formats
+  { FORMAT: Tls13ClientHello; FIELD: ext_ecpf_type;    SEMANTIC: FIXED_VALUE(0x000b) };
+  { FORMAT: Tls13ClientHello; FIELD: ext_ecpf_length;  SEMANTIC: FIXED_VALUE(4) };
+  { FORMAT: Tls13ClientHello; FIELD: ecpf_list_length; SEMANTIC: FIXED_VALUE(3) };
+  { FORMAT: Tls13ClientHello; FIELD: ecpf_formats; SEMANTIC: FIXED_BYTES([0x00, 0x01, 0x02]) };
+
+  // Extension 3: supported_groups
+  { FORMAT: Tls13ClientHello; FIELD: ext_groups_type;  SEMANTIC: FIXED_VALUE(0x000a) };
+  { FORMAT: Tls13ClientHello; FIELD: ext_groups_length; SEMANTIC: FIXED_VALUE(12) };
+  { FORMAT: Tls13ClientHello; FIELD: groups_list_length; SEMANTIC: FIXED_VALUE(10) };
+  { FORMAT: Tls13ClientHello; FIELD: groups_list; SEMANTIC: FIXED_BYTES([
+    0x00, 0x1d,  // x25519
+    0x00, 0x17,  // secp256r1
+    0x00, 0x1e,  // x448
+    0x00, 0x18,  // secp384r1
+    0x00, 0x19   // secp521r1
+  ]) };
+
+  // Extension 4: signature_algorithms
+  { FORMAT: Tls13ClientHello; FIELD: ext_sig_type;     SEMANTIC: FIXED_VALUE(0x000d) };
+  { FORMAT: Tls13ClientHello; FIELD: ext_sig_length;   SEMANTIC: FIXED_VALUE(26) };
+  { FORMAT: Tls13ClientHello; FIELD: sig_list_length;  SEMANTIC: FIXED_VALUE(24) };
+  { FORMAT: Tls13ClientHello; FIELD: sig_algorithms; SEMANTIC: FIXED_BYTES([
+    0x04, 0x03,  // ecdsa_secp256r1_sha256
+    0x05, 0x03,  // ecdsa_secp384r1_sha384
+    0x06, 0x03,  // ecdsa_secp521r1_sha512
+    0x08, 0x07,  // ed25519
+    0x08, 0x08,  // ed448
+    0x08, 0x09,  // rsa_pss_pss_sha256
+    0x08, 0x0a,  // rsa_pss_pss_sha384
+    0x08, 0x0b,  // rsa_pss_pss_sha512
+    0x08, 0x04,  // rsa_pss_rsae_sha256
+    0x08, 0x05,  // rsa_pss_rsae_sha384
+    0x08, 0x06,  // rsa_pss_rsae_sha512
+    0x04, 0x01   // rsa_pkcs1_sha256
+  ]) };
+
+  // Extension 5: session_ticket (empty)
+  { FORMAT: Tls13ClientHello; FIELD: ext_ticket_type;  SEMANTIC: FIXED_VALUE(0x0023) };
+  { FORMAT: Tls13ClientHello; FIELD: ext_ticket_length; SEMANTIC: FIXED_VALUE(0) };
+
+  // Extension 6: encrypt_then_mac (empty)
+  { FORMAT: Tls13ClientHello; FIELD: ext_etm_type;     SEMANTIC: FIXED_VALUE(0x0016) };
+  { FORMAT: Tls13ClientHello; FIELD: ext_etm_length;   SEMANTIC: FIXED_VALUE(0) };
+
+  // Extension 7: extended_master_secret (empty)
+  { FORMAT: Tls13ClientHello; FIELD: ext_ems_type;     SEMANTIC: FIXED_VALUE(0x0017) };
+  { FORMAT: Tls13ClientHello; FIELD: ext_ems_length;   SEMANTIC: FIXED_VALUE(0) };
+
+  // Extension 8: supported_versions (CRITICAL!)
+  { FORMAT: Tls13ClientHello; FIELD: ext_versions_type; SEMANTIC: FIXED_VALUE(0x002b) };
+  { FORMAT: Tls13ClientHello; FIELD: ext_versions_length; SEMANTIC: FIXED_VALUE(5) };
+  { FORMAT: Tls13ClientHello; FIELD: versions_list_length; SEMANTIC: FIXED_VALUE(4) };
+  { FORMAT: Tls13ClientHello; FIELD: versions_list; SEMANTIC: FIXED_BYTES([
+    0x03, 0x04,  // TLS 1.3
+    0x03, 0x03   // TLS 1.2
+  ]) };
+
+  // Extension 9: psk_key_exchange_modes
+  { FORMAT: Tls13ClientHello; FIELD: ext_psk_modes_type; SEMANTIC: FIXED_VALUE(0x002d) };
+  { FORMAT: Tls13ClientHello; FIELD: ext_psk_modes_length; SEMANTIC: FIXED_VALUE(2) };
+  { FORMAT: Tls13ClientHello; FIELD: psk_modes_length; SEMANTIC: FIXED_VALUE(1) };
+  { FORMAT: Tls13ClientHello; FIELD: psk_modes;        SEMANTIC: FIXED_VALUE(0x01) };
+
+  // Extension 10: key_share (THE BIG ONE!)
+  { FORMAT: Tls13ClientHello; FIELD: ext_keyshare_type; SEMANTIC: FIXED_VALUE(0x0033) };
+  { FORMAT: Tls13ClientHello; FIELD: ext_keyshare_length; SEMANTIC: FIXED_VALUE(38) };
+  { FORMAT: Tls13ClientHello; FIELD: keyshare_list_length; SEMANTIC: FIXED_VALUE(36) };
+  { FORMAT: Tls13ClientHello; FIELD: keyshare_group;   SEMANTIC: FIXED_VALUE(0x001d) };
+  { FORMAT: Tls13ClientHello; FIELD: keyshare_key_length; SEMANTIC: FIXED_VALUE(32) };
+  { FORMAT: Tls13ClientHello; FIELD: keyshare_key;     SEMANTIC: RANDOM };
+
+  // ===== ServerHello Semantics =====
+
+  { FORMAT: Tls13ServerHello; FIELD: content_type;     SEMANTIC: FIXED_VALUE(0x16) };
+  { FORMAT: Tls13ServerHello; FIELD: record_version;   SEMANTIC: FIXED_VALUE(0x0303) };
+  { FORMAT: Tls13ServerHello; FIELD: record_length;    SEMANTIC: LENGTH };
+  { FORMAT: Tls13ServerHello; FIELD: handshake_type;   SEMANTIC: FIXED_VALUE(0x02) };
+  { FORMAT: Tls13ServerHello; FIELD: handshake_length; SEMANTIC: LENGTH };
+  { FORMAT: Tls13ServerHello; FIELD: server_version;   SEMANTIC: FIXED_VALUE(0x0303) };
+  { FORMAT: Tls13ServerHello; FIELD: server_random;    SEMANTIC: RANDOM };
+  { FORMAT: Tls13ServerHello; FIELD: session_id_length; SEMANTIC: FIXED_VALUE(0) };
+  { FORMAT: Tls13ServerHello; FIELD: cipher_suite;     SEMANTIC: FIXED_VALUE(0x1301) };
+  { FORMAT: Tls13ServerHello; FIELD: compression;      SEMANTIC: FIXED_VALUE(0x00) };
+  { FORMAT: Tls13ServerHello; FIELD: extensions_length; SEMANTIC: LENGTH };
+  { FORMAT: Tls13ServerHello; FIELD: ext_version_type; SEMANTIC: FIXED_VALUE(0x002b) };
+  { FORMAT: Tls13ServerHello; FIELD: ext_version_length; SEMANTIC: FIXED_VALUE(2) };
+  { FORMAT: Tls13ServerHello; FIELD: selected_version; SEMANTIC: FIXED_VALUE(0x0304) };
+  { FORMAT: Tls13ServerHello; FIELD: ext_keyshare_type; SEMANTIC: FIXED_VALUE(0x0033) };
+  { FORMAT: Tls13ServerHello; FIELD: ext_keyshare_length; SEMANTIC: FIXED_VALUE(36) };
+  { FORMAT: Tls13ServerHello; FIELD: keyshare_group;   SEMANTIC: FIXED_VALUE(0x001d) };
+  { FORMAT: Tls13ServerHello; FIELD: keyshare_key_length; SEMANTIC: FIXED_VALUE(32) };
+  { FORMAT: Tls13ServerHello; FIELD: keyshare_key;     SEMANTIC: RANDOM };
+
+  // ===== Application Data Semantics =====
+
+  { FORMAT: Tls13AppData; FIELD: content_type;    SEMANTIC: FIXED_VALUE(0x17) };
+  { FORMAT: Tls13AppData; FIELD: record_version;  SEMANTIC: FIXED_VALUE(0x0303) };
+  { FORMAT: Tls13AppData; FIELD: record_length;   SEMANTIC: LENGTH };
+  { FORMAT: Tls13AppData; FIELD: payload;         SEMANTIC: PAYLOAD };
 
 @SEGMENT.SEQUENCE
 
-  // Bidirectional encrypted data flow
-  { ROLE: CLIENT; PHASE: DATA; FORMAT: TlsAppData };
-  { ROLE: SERVER; PHASE: DATA; FORMAT: TlsAppData };
+  // TLS 1.3 handshake (once per connection)
+  { ROLE: CLIENT; PHASE: HANDSHAKE; FORMAT: Tls13ClientHello };
+  { ROLE: SERVER; PHASE: HANDSHAKE; FORMAT: Tls13ServerHello };
+
+  // Bidirectional encrypted data
+  { ROLE: CLIENT; PHASE: DATA; FORMAT: Tls13AppData };
+  { ROLE: SERVER; PHASE: DATA; FORMAT: Tls13AppData };
 
 @SEGMENT.CRYPTO
 
-  PASSWORD = "nooshdaroo-https-key";
+  PASSWORD = "nooshdaroo-tls13-key";
   CIPHER   = CHACHA20-POLY1305;
 
-  ENCRYPT TlsAppData FROM TlsAppData
-    { PTEXT: encrypted_data; CTEXT: encrypted_data; MAC: auth_tag };
+  ENCRYPT Tls13AppData FROM Tls13AppData
+    { PTEXT: payload; CTEXT: payload };

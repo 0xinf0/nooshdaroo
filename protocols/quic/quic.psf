@@ -4,6 +4,19 @@
 
 @SEGMENT.FORMATS
 
+  // QUIC Initial Packet (handshake)
+  DEFINE QuicInitial
+    { NAME: header_form    ; TYPE: u8 },      // 0xC0 = Initial (long header)
+    { NAME: version        ; TYPE: u32 },     // QUIC version (0x00000001)
+    { NAME: dcid_len       ; TYPE: u8 },      // Destination Connection ID length
+    { NAME: dcid           ; TYPE: [u8; dcid_len.size_of] },
+    { NAME: scid_len       ; TYPE: u8 },      // Source Connection ID length
+    { NAME: scid           ; TYPE: [u8; scid_len.size_of] },
+    { NAME: token_len      ; TYPE: u8 },      // Token length (0 for client)
+    { NAME: length         ; TYPE: u16 },     // Packet payload length
+    { NAME: packet_number  ; TYPE: u32 },     // Packet number
+    { NAME: payload        ; TYPE: [u8; length.size_of] };
+
   // QUIC Short Header Packet
   DEFINE QuicShortHeader
     { NAME: header_form    ; TYPE: u8 },      // 0x40 = short header
@@ -15,11 +28,24 @@
 
 @SEGMENT.SEMANTICS
 
+  // Initial packet semantics
+  { FORMAT: QuicInitial; FIELD: header_form; SEMANTIC: FIXED_VALUE(0xC0) };
+  { FORMAT: QuicInitial; FIELD: version;     SEMANTIC: FIXED_VALUE(0x00000001) };
+  { FORMAT: QuicInitial; FIELD: dcid_len;    SEMANTIC: LENGTH };
+  { FORMAT: QuicInitial; FIELD: scid_len;    SEMANTIC: LENGTH };
+  { FORMAT: QuicInitial; FIELD: token_len;   SEMANTIC: FIXED_VALUE(0x00) };
+  { FORMAT: QuicInitial; FIELD: length;      SEMANTIC: LENGTH };
+
+  // Short header semantics
   { FORMAT: QuicShortHeader; FIELD: header_form;    SEMANTIC: FIXED_VALUE(0x40) };
   { FORMAT: QuicShortHeader; FIELD: payload_len;    SEMANTIC: LENGTH };
   { FORMAT: QuicShortHeader; FIELD: encrypted_data; SEMANTIC: PAYLOAD };
 
 @SEGMENT.SEQUENCE
+
+  // QUIC handshake (Initial packets)
+  { ROLE: CLIENT; PHASE: HANDSHAKE; FORMAT: QuicInitial };
+  { ROLE: SERVER; PHASE: HANDSHAKE; FORMAT: QuicInitial };
 
   // Bidirectional QUIC packets
   { ROLE: CLIENT; PHASE: DATA; FORMAT: QuicShortHeader };

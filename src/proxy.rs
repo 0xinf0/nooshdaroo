@@ -2,8 +2,10 @@
 
 use bytes::BytesMut;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::RwLock;
 use crate::noise_transport::NoiseTransport;
 
 #[cfg(target_os = "linux")]
@@ -32,6 +34,7 @@ pub struct UnifiedProxyListener {
     server_addr: Option<SocketAddr>,
     noise_config: Option<crate::noise_transport::NoiseConfig>,
     protocol_id: crate::ProtocolId,
+    controller: Option<Arc<RwLock<crate::ShapeShiftController>>>,
 }
 
 impl UnifiedProxyListener {
@@ -43,6 +46,7 @@ impl UnifiedProxyListener {
             server_addr: None,
             noise_config: None,
             protocol_id,
+            controller: None,
         }
     }
 
@@ -50,6 +54,12 @@ impl UnifiedProxyListener {
     pub fn with_server(mut self, addr: SocketAddr, noise_config: crate::noise_transport::NoiseConfig) -> Self {
         self.server_addr = Some(addr);
         self.noise_config = Some(noise_config);
+        self
+    }
+
+    /// Set ShapeShiftController for dynamic protocol rotation
+    pub fn with_controller(mut self, controller: Arc<RwLock<crate::ShapeShiftController>>) -> Self {
+        self.controller = Some(controller);
         self
     }
 
@@ -67,8 +77,9 @@ impl UnifiedProxyListener {
             let noise_config = self.noise_config.clone();
             let protocol_id = self.protocol_id.clone();
 
+            let controller_clone = self.controller.clone();
             tokio::spawn(async move {
-                if let Err(e) = handle_connection(socket, peer_addr, proxy_types, server_addr, noise_config, protocol_id).await {
+                if let Err(e) = handle_connection(socket, peer_addr, proxy_types, server_addr, noise_config, protocol_id, controller_clone).await {
                     log::error!("Connection error from {}: {}", peer_addr, e);
                 }
             });
@@ -84,6 +95,7 @@ async fn handle_connection(
     server_addr: Option<SocketAddr>,
     noise_config: Option<crate::noise_transport::NoiseConfig>,
     protocol_id: crate::ProtocolId,
+    controller: Option<Arc<RwLock<crate::ShapeShiftController>>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Peek at first bytes to detect protocol
     let mut buf = BytesMut::with_capacity(4096);
@@ -99,7 +111,7 @@ async fn handle_connection(
     log::debug!("Detected {:?} proxy from {}", proxy_type, peer_addr);
 
     match proxy_type {
-        ProxyType::Socks5 => handle_socks5(socket, buf, peer_addr, server_addr, noise_config, protocol_id).await,
+        ProxyType::Socks5 => handle_socks5(socket, buf, peer_addr, server_addr, noise_config, protocol_id, controller).await,
         ProxyType::Http => handle_http(socket, buf, peer_addr).await,
         ProxyType::Transparent => handle_transparent(socket, buf, peer_addr).await,
     }
@@ -148,9 +160,11 @@ async fn handle_socks5(
     server_addr: Option<SocketAddr>,
     noise_config: Option<crate::noise_transport::NoiseConfig>,
     protocol_id: crate::ProtocolId,
+    controller: Option<Arc<RwLock<crate::ShapeShiftController>>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::socks5::{socks5_handshake, connect_target, send_reply, copy_bidirectional, Command, ReplyCode, PrefixedStream};
     use crate::noise_transport::NoiseTransport;
+    use crate::protocol_wrapper::ProtocolWrapper;
 
     log::debug!("SOCKS5 connection from {}", peer_addr);
 
@@ -188,10 +202,14 @@ async fn handle_socks5(
                     }
                 };
 
-                // Perform Noise handshake
-                let mut noise_transport = match NoiseTransport::client_handshake(&mut server_stream, &noise_config).await {
+                // Create protocol wrapper for handshake wrapping
+                let mut protocol_wrapper = ProtocolWrapper::new(protocol_id.clone(), None);
+                log::debug!("Using protocol: {}", protocol_id.as_str());
+
+                // Perform Noise handshake with protocol wrapping
+                let mut noise_transport = match NoiseTransport::client_handshake(&mut server_stream, &noise_config, Some(&mut protocol_wrapper)).await {
                     Ok(transport) => {
-                        log::debug!("Noise handshake completed with server");
+                        log::debug!("Noise handshake completed with server using {}", protocol_id.as_str());
                         transport
                     }
                     Err(e) => {
@@ -248,7 +266,7 @@ async fn handle_socks5(
 
                 // Relay data bidirectionally through encrypted tunnel
                 log::debug!("Starting encrypted relay for {}:{}", target.host, target.port);
-                if let Err(e) = relay_through_noise_tunnel(socket, server_stream, noise_transport, wrapper).await {
+                if let Err(e) = relay_through_noise_tunnel(socket, server_stream, noise_transport, wrapper, controller).await {
                     log::debug!("Tunnel relay ended for {}:{}: {}", target.host, target.port, e);
                 } else {
                     log::debug!("Tunnel relay completed successfully for {}:{}", target.host, target.port);
@@ -298,17 +316,32 @@ async fn handle_socks5(
     Ok(())
 }
 
-/// Relay data through Noise-encrypted tunnel with protocol wrapping
+/// Relay data through Noise-encrypted tunnel with protocol wrapping and dynamic rotation
 async fn relay_through_noise_tunnel(
     mut client: impl AsyncReadExt + AsyncWriteExt + Unpin,
     mut server: TcpStream,
     mut noise: NoiseTransport,
     mut wrapper: crate::ProtocolWrapper,
+    controller: Option<Arc<RwLock<crate::ShapeShiftController>>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use tokio::io::AsyncWriteExt;
     let mut client_buf = vec![0u8; 8192];
 
     loop {
+        // Check if rotation is needed (if controller exists)
+        if let Some(ref ctrl) = controller {
+            if let Ok(mut guard) = ctrl.try_write() {
+                if guard.should_rotate() {
+                    if guard.rotate().is_ok() {
+                        let new_protocol = guard.stats().current_protocol.clone();
+                        log::info!("Protocol rotation triggered: switching to {}", new_protocol.as_str());
+                        wrapper = crate::ProtocolWrapper::new(new_protocol, None);
+                        log::debug!("Protocol wrapper updated for rotation");
+                    }
+                }
+            }
+        }
+
         tokio::select! {
             // Read from client, encrypt, wrap, send to server
             result = client.read(&mut client_buf) => {

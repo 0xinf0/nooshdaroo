@@ -13,6 +13,25 @@
     { NAME: authority      ; TYPE: u16 },     // Authority RRs
     { NAME: additional     ; TYPE: u16 };     // Additional RRs
 
+  // DNS Handshake Query (initial query establishing connection)
+  DEFINE DnsHandshakeQuery
+    { NAME: header         ; TYPE: DnsHeader },
+    { NAME: qname_len      ; TYPE: u8 },      // Domain name length
+    { NAME: qname          ; TYPE: [u8; qname_len.size_of] },
+    { NAME: qtype          ; TYPE: u16 },     // Query type (A=1, AAAA=28)
+    { NAME: qclass         ; TYPE: u16 };     // Query class (IN=1)
+
+  // DNS Handshake Response
+  DEFINE DnsHandshakeResponse
+    { NAME: header         ; TYPE: DnsHeader },
+    { NAME: qname_len      ; TYPE: u8 },
+    { NAME: qname          ; TYPE: [u8; qname_len.size_of] },
+    { NAME: qtype          ; TYPE: u16 },
+    { NAME: qclass         ; TYPE: u16 },
+    { NAME: ttl            ; TYPE: u32 },     // Time to live
+    { NAME: rdlength       ; TYPE: u16 },     // Resource data length
+    { NAME: rdata          ; TYPE: [u8; rdlength.size_of] };
+
   // DNS Query (from client)
   DEFINE DnsQuery
     { NAME: header         ; TYPE: DnsHeader },
@@ -29,13 +48,65 @@
 
 @SEGMENT.SEMANTICS
 
+  // DnsHeader field semantics (applied to all formats using DnsHeader)
+  { FORMAT: DnsHandshakeQuery; FIELD: header.transaction_id; SEMANTIC: RANDOM };
+  { FORMAT: DnsHandshakeQuery; FIELD: header.flags;          SEMANTIC: FIXED_VALUE(0x0100) }; // Standard query
+  { FORMAT: DnsHandshakeQuery; FIELD: header.questions;      SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsHandshakeQuery; FIELD: header.answers;        SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsHandshakeQuery; FIELD: header.authority;      SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsHandshakeQuery; FIELD: header.additional;     SEMANTIC: FIXED_VALUE(0x0000) };
+
+  // Handshake query semantics
+  { FORMAT: DnsHandshakeQuery; FIELD: qname_len; SEMANTIC: LENGTH };
+  { FORMAT: DnsHandshakeQuery; FIELD: qname;     SEMANTIC: FIXED_BYTES(0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f, 0x6d, 0x00) }; // "google.com" in DNS format
+  { FORMAT: DnsHandshakeQuery; FIELD: qtype;     SEMANTIC: FIXED_VALUE(0x0001) }; // A record
+  { FORMAT: DnsHandshakeQuery; FIELD: qclass;    SEMANTIC: FIXED_VALUE(0x0001) }; // IN class
+
+  // Handshake response header semantics
+  { FORMAT: DnsHandshakeResponse; FIELD: header.transaction_id; SEMANTIC: RANDOM };
+  { FORMAT: DnsHandshakeResponse; FIELD: header.flags;          SEMANTIC: FIXED_VALUE(0x8180) }; // Standard response
+  { FORMAT: DnsHandshakeResponse; FIELD: header.questions;      SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsHandshakeResponse; FIELD: header.answers;        SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsHandshakeResponse; FIELD: header.authority;      SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsHandshakeResponse; FIELD: header.additional;     SEMANTIC: FIXED_VALUE(0x0000) };
+
+  // Handshake response semantics
+  { FORMAT: DnsHandshakeResponse; FIELD: qname_len; SEMANTIC: LENGTH };
+  { FORMAT: DnsHandshakeResponse; FIELD: qname;     SEMANTIC: FIXED_BYTES(0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f, 0x6d, 0x00) }; // "google.com"
+  { FORMAT: DnsHandshakeResponse; FIELD: qtype;     SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsHandshakeResponse; FIELD: qclass;    SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsHandshakeResponse; FIELD: rdlength;  SEMANTIC: LENGTH };
+  { FORMAT: DnsHandshakeResponse; FIELD: rdata;     SEMANTIC: PAYLOAD };
+
+  // Data phase query header semantics
+  { FORMAT: DnsQuery; FIELD: header.transaction_id; SEMANTIC: RANDOM };
+  { FORMAT: DnsQuery; FIELD: header.flags;          SEMANTIC: FIXED_VALUE(0x0100) };
+  { FORMAT: DnsQuery; FIELD: header.questions;      SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsQuery; FIELD: header.answers;        SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsQuery; FIELD: header.authority;      SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsQuery; FIELD: header.additional;     SEMANTIC: FIXED_VALUE(0x0000) };
+
   { FORMAT: DnsQuery;    FIELD: query_len;     SEMANTIC: LENGTH };
   { FORMAT: DnsQuery;    FIELD: query_data;    SEMANTIC: PAYLOAD };
+
+  // Data phase response header semantics
+  { FORMAT: DnsResponse; FIELD: header.transaction_id; SEMANTIC: RANDOM };
+  { FORMAT: DnsResponse; FIELD: header.flags;          SEMANTIC: FIXED_VALUE(0x8180) };
+  { FORMAT: DnsResponse; FIELD: header.questions;      SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsResponse; FIELD: header.answers;        SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsResponse; FIELD: header.authority;      SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsResponse; FIELD: header.additional;     SEMANTIC: FIXED_VALUE(0x0000) };
+
   { FORMAT: DnsResponse; FIELD: response_len;  SEMANTIC: LENGTH };
   { FORMAT: DnsResponse; FIELD: response_data; SEMANTIC: PAYLOAD };
 
 @SEGMENT.SEQUENCE
 
+  // DNS handshake (initial query/response)
+  { ROLE: CLIENT; PHASE: HANDSHAKE; FORMAT: DnsHandshakeQuery };
+  { ROLE: SERVER; PHASE: HANDSHAKE; FORMAT: DnsHandshakeResponse };
+
+  // Ongoing DNS queries/responses
   { ROLE: CLIENT; PHASE: DATA; FORMAT: DnsQuery };
   { ROLE: SERVER; PHASE: DATA; FORMAT: DnsResponse };
 

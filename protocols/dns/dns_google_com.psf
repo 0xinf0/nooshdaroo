@@ -87,6 +87,11 @@
 
 @SEGMENT.SEQUENCE
 
+  // DNS handshake (initial query/response)
+  { ROLE: CLIENT; PHASE: HANDSHAKE; FORMAT: DnsQuery };
+  { ROLE: SERVER; PHASE: HANDSHAKE; FORMAT: DnsResponse };
+
+  // Ongoing DNS queries
   { ROLE: CLIENT; PHASE: DATA; FORMAT: DnsQuery };
   { ROLE: SERVER; PHASE: DATA; FORMAT: DnsResponse };
 

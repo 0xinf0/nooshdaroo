@@ -4,6 +4,36 @@
 
 @SEGMENT.FORMATS
 
+  // TLS 1.3 ClientHello
+  DEFINE Tls13ClientHello
+    { NAME: content_type     ; TYPE: u8 },       // 0x16 = handshake
+    { NAME: legacy_version   ; TYPE: u16 },      // 0x0303 = TLS 1.2
+    { NAME: length           ; TYPE: u16 },      // Record length
+    { NAME: handshake_type   ; TYPE: u8 },       // 0x01 = ClientHello
+    { NAME: handshake_length ; TYPE: u24 },      // Handshake length
+    { NAME: legacy_version2  ; TYPE: u16 },      // 0x0303
+    { NAME: random           ; TYPE: [u8; 32] }, // Client random
+    { NAME: session_id_len   ; TYPE: u8 },       // Legacy session ID
+    { NAME: cipher_suites_len; TYPE: u16 },      // Cipher suites length
+    { NAME: cipher_suites    ; TYPE: [u8; 6] },  // TLS 1.3 cipher suites
+    { NAME: compression_len  ; TYPE: u8 },       // 0x01
+    { NAME: compression      ; TYPE: u8 },       // 0x00
+    { NAME: extensions_len   ; TYPE: u16 };      // Extensions length
+
+  // TLS 1.3 ServerHello
+  DEFINE Tls13ServerHello
+    { NAME: content_type     ; TYPE: u8 },       // 0x16 = handshake
+    { NAME: legacy_version   ; TYPE: u16 },      // 0x0303 = TLS 1.2
+    { NAME: length           ; TYPE: u16 },      // Record length
+    { NAME: handshake_type   ; TYPE: u8 },       // 0x02 = ServerHello
+    { NAME: handshake_length ; TYPE: u24 },      // Handshake length
+    { NAME: server_version   ; TYPE: u16 },      // 0x0303
+    { NAME: random           ; TYPE: [u8; 32] }, // Server random
+    { NAME: session_id_len   ; TYPE: u8 },       // Legacy session ID
+    { NAME: cipher_suite     ; TYPE: u16 },      // Selected cipher
+    { NAME: compression      ; TYPE: u8 },       // 0x00
+    { NAME: extensions_len   ; TYPE: u16 };      // Extensions length
+
   // TLS 1.3 Record
   DEFINE Tls13Record
     { NAME: content_type   ; TYPE: u8 },       // 0x17 = application_data
@@ -14,6 +44,39 @@
 
 @SEGMENT.SEMANTICS
 
+  // ClientHello semantics
+  { FORMAT: Tls13ClientHello; FIELD: content_type;      SEMANTIC: FIXED_VALUE(0x16) };
+  { FORMAT: Tls13ClientHello; FIELD: legacy_version;    SEMANTIC: FIXED_VALUE(0x0303) };
+  { FORMAT: Tls13ClientHello; FIELD: handshake_type;    SEMANTIC: FIXED_VALUE(0x01) };
+  { FORMAT: Tls13ClientHello; FIELD: legacy_version2;   SEMANTIC: FIXED_VALUE(0x0303) };
+  { FORMAT: Tls13ClientHello; FIELD: session_id_len;    SEMANTIC: FIXED_VALUE(0x00) };
+  { FORMAT: Tls13ClientHello; FIELD: cipher_suites_len; SEMANTIC: FIXED_VALUE(0x0006) };
+  { FORMAT: Tls13ClientHello; FIELD: cipher_suites;     SEMANTIC: FIXED_VALUE(
+      0x13, 0x01,  // TLS_AES_128_GCM_SHA256
+      0x13, 0x02,  // TLS_AES_256_GCM_SHA384
+      0x13, 0x03   // TLS_CHACHA20_POLY1305_SHA256
+    )};
+  { FORMAT: Tls13ClientHello; FIELD: compression_len;   SEMANTIC: FIXED_VALUE(0x01) };
+  { FORMAT: Tls13ClientHello; FIELD: compression;       SEMANTIC: FIXED_VALUE(0x00) };
+  { FORMAT: Tls13ClientHello; FIELD: random;            SEMANTIC: RANDOM };
+  { FORMAT: Tls13ClientHello; FIELD: length;            SEMANTIC: LENGTH };
+  { FORMAT: Tls13ClientHello; FIELD: handshake_length;  SEMANTIC: LENGTH };
+  { FORMAT: Tls13ClientHello; FIELD: extensions_len;    SEMANTIC: LENGTH };
+
+  // ServerHello semantics
+  { FORMAT: Tls13ServerHello; FIELD: content_type;      SEMANTIC: FIXED_VALUE(0x16) };
+  { FORMAT: Tls13ServerHello; FIELD: legacy_version;    SEMANTIC: FIXED_VALUE(0x0303) };
+  { FORMAT: Tls13ServerHello; FIELD: handshake_type;    SEMANTIC: FIXED_VALUE(0x02) };
+  { FORMAT: Tls13ServerHello; FIELD: server_version;    SEMANTIC: FIXED_VALUE(0x0303) };
+  { FORMAT: Tls13ServerHello; FIELD: session_id_len;    SEMANTIC: FIXED_VALUE(0x00) };
+  { FORMAT: Tls13ServerHello; FIELD: cipher_suite;      SEMANTIC: FIXED_VALUE(0x1301) };
+  { FORMAT: Tls13ServerHello; FIELD: compression;       SEMANTIC: FIXED_VALUE(0x00) };
+  { FORMAT: Tls13ServerHello; FIELD: random;            SEMANTIC: RANDOM };
+  { FORMAT: Tls13ServerHello; FIELD: length;            SEMANTIC: LENGTH };
+  { FORMAT: Tls13ServerHello; FIELD: handshake_length;  SEMANTIC: LENGTH };
+  { FORMAT: Tls13ServerHello; FIELD: extensions_len;    SEMANTIC: LENGTH };
+
+  // Application data semantics
   { FORMAT: Tls13Record; FIELD: content_type;   SEMANTIC: FIXED_VALUE(0x17) };
   { FORMAT: Tls13Record; FIELD: legacy_version; SEMANTIC: FIXED_VALUE(0x0303) };
   { FORMAT: Tls13Record; FIELD: length;         SEMANTIC: LENGTH };
@@ -21,6 +84,11 @@
 
 @SEGMENT.SEQUENCE
 
+  // TLS 1.3 handshake
+  { ROLE: CLIENT; PHASE: HANDSHAKE; FORMAT: Tls13ClientHello };
+  { ROLE: SERVER; PHASE: HANDSHAKE; FORMAT: Tls13ServerHello };
+
+  // Application data
   { ROLE: CLIENT; PHASE: DATA; FORMAT: Tls13Record };
   { ROLE: SERVER; PHASE: DATA; FORMAT: Tls13Record };
 

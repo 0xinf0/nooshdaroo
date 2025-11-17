@@ -4,6 +4,11 @@
 
 @SEGMENT.FORMATS
 
+  // SSH Version String (handshake)
+  // Format: "SSH-2.0-OpenSSH_8.9\r\n"
+  DEFINE SshVersionString
+    { NAME: version_string ; TYPE: [u8; 21] }; // "SSH-2.0-OpenSSH_8.9\r\n"
+
   // SSH Binary Packet
   DEFINE SshPacket
     { NAME: packet_length  ; TYPE: u32 },     // Packet length (excluding MAC)
@@ -15,11 +20,22 @@
 
 @SEGMENT.SEMANTICS
 
+  // SSH version string (OpenSSH 8.9)
+  { FORMAT: SshVersionString; FIELD: version_string; SEMANTIC: FIXED_VALUE(
+      'S', 'S', 'H', '-', '2', '.', '0', '-',
+      'O', 'p', 'e', 'n', 'S', 'S', 'H', '_', '8', '.', '9',
+      0x0D, 0x0A  // \r\n
+    )};
+
   { FORMAT: SshPacket; FIELD: payload_len; SEMANTIC: LENGTH };
   { FORMAT: SshPacket; FIELD: payload;     SEMANTIC: PAYLOAD };
   { FORMAT: SshPacket; FIELD: padding;     SEMANTIC: PADDING };
 
 @SEGMENT.SEQUENCE
+
+  // SSH version exchange (handshake)
+  { ROLE: CLIENT; PHASE: HANDSHAKE; FORMAT: SshVersionString };
+  { ROLE: SERVER; PHASE: HANDSHAKE; FORMAT: SshVersionString };
 
   // Bidirectional encrypted packets
   { ROLE: CLIENT; PHASE: DATA; FORMAT: SshPacket };
