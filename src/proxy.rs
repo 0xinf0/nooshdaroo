@@ -295,28 +295,25 @@ async fn handle_socks5(
                     log::debug!("Tunnel relay completed successfully for {}:{}", target.host, target.port);
                 }
             } else {
-                // DIRECT MODE: Connect directly to target (local mode)
-                log::debug!("Direct connection mode (no server configured)");
-
+                // NO SERVER CONFIGURED: Refuse connection for security
+                log::error!("No server configured - refusing direct connection to {}:{} for security", target.host, target.port);
+                send_reply(&mut socket, ReplyCode::NotAllowed, &target).await?;
+                return Err("Direct connections not allowed - server configuration required".into());
+            }
+            /*
+            // REMOVED: Direct connection fallback is a security risk
+            // If tunnel fails, connections should be blocked, not leaked
+            } else {
                 let mut target_stream = match connect_target(&target).await {
                     Ok(stream) => {
-                        log::info!("Connected to target {}:{}", target.host, target.port);
                         send_reply(&mut socket, ReplyCode::Succeeded, &target).await?;
                         stream
                     }
                     Err(e) => {
-                        log::error!("Failed to connect to {}:{}: {}", target.host, target.port, e);
-                        let reply = match e.kind() {
-                            std::io::ErrorKind::ConnectionRefused => ReplyCode::ConnectionRefused,
-                            std::io::ErrorKind::NotFound | std::io::ErrorKind::TimedOut => ReplyCode::HostUnreachable,
-                            _ => ReplyCode::GeneralFailure,
-                        };
-                        send_reply(&mut socket, reply, &target).await?;
+                        send_reply(&mut socket, ReplyCode::GeneralFailure, &target).await?;
                         return Err(e.into());
                     }
                 };
-
-                // Bidirectionally forward traffic between client and target
                 log::debug!("Starting bidirectional relay for {}:{}", target.host, target.port);
                 if let Err(e) = copy_bidirectional(socket, &mut target_stream).await {
                     log::debug!("Relay ended for {}:{}: {}", target.host, target.port, e);
@@ -324,6 +321,7 @@ async fn handle_socks5(
                     log::debug!("Relay completed successfully for {}:{}", target.host, target.port);
                 }
             }
+            */
         }
         Command::Bind => {
             log::warn!("SOCKS5 BIND command not supported");

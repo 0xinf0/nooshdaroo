@@ -8,15 +8,16 @@ use crate::protocol::ProtocolId;
 use crate::traffic::TrafficShaper;
 use crate::psf::{PsfInterpreter, ProtocolFrame};
 
-// Embed all verified PSF files at compile time
-// Only production-ready protocols validated with nDPI are included
+// Embed all PSF files at compile time
 const DNS_PSF: &str = include_str!("../protocols/dns/dns.psf");
 const DNS_GOOGLE_PSF: &str = include_str!("../protocols/dns/dns_google_com.psf");
 const HTTPS_PSF: &str = include_str!("../protocols/http/https.psf");
 const HTTPS_GOOGLE_PSF: &str = include_str!("../protocols/http/https_google_com.psf");
+const TLS_SIMPLE_PSF: &str = include_str!("../protocols/http/tls_simple.psf");
+const TLS13_COMPLETE_PSF: &str = include_str!("../protocols/http/tls13_complete.psf");
 const SSH_PSF: &str = include_str!("../protocols/ssh/ssh.psf");
-// WebSocket protocol not yet validated - uncomment when ready:
-// const WEBSOCKET_PSF: &str = include_str!("../protocols/http/websocket.psf");
+const QUIC_PSF: &str = include_str!("../protocols/quic/quic.psf");
+const TLS13_PSF: &str = include_str!("../protocols/tls/tls13.psf");
 
 /// Wraps Noise encrypted frames with protocol-specific headers
 pub struct ProtocolWrapper {
@@ -32,22 +33,24 @@ pub struct ProtocolWrapper {
 /// Map protocol name to embedded PSF content
 fn get_psf_content(protocol: &str) -> Option<&'static str> {
     match protocol.to_lowercase().as_str() {
-        // TLS/HTTPS
-        "https" | "tls" | "tls13" => Some(HTTPS_PSF),
+        // TLS/HTTPS variants
+        "https" => Some(HTTPS_PSF),
         "https-google" | "https_google" | "https-google-com" | "https_google_com" => Some(HTTPS_GOOGLE_PSF),
+        "tls" | "tls_simple" | "tls-simple" => Some(TLS_SIMPLE_PSF),
+        "tls13" | "tls13_complete" | "tls13-complete" => Some(TLS13_COMPLETE_PSF),
+        "tls13_alt" | "tls13-alt" => Some(TLS13_PSF),
 
-        // DNS
+        // DNS variants
         "dns" => Some(DNS_PSF),
         "dns-google" | "dns_google" | "dns-google-com" | "dns_google_com" => Some(DNS_GOOGLE_PSF),
 
         // SSH
         "ssh" => Some(SSH_PSF),
 
-        // HTTP variants
-        // WebSocket not yet validated:
-        // "websocket" | "ws" => Some(WEBSOCKET_PSF),
+        // QUIC
+        "quic" => Some(QUIC_PSF),
 
-        // Other protocols not yet embedded will use raw Noise frames
+        // Fallback: use raw Noise frames
         _ => None,
     }
 }

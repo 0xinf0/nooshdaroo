@@ -8,11 +8,11 @@ password = "nooshdaroo-client-secret"
 
 [shapeshift.strategy]
 type = "fixed"
-protocol = "https"
+protocol = "dns"
 
 [socks]
 listen_addr = "127.0.0.1:1080"
-server_address = "23.128.36.42:8443"
+server_address = "23.128.36.102:53"
 auth_required = false
 
 [transport]
