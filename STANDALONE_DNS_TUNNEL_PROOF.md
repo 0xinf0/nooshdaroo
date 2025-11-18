@@ -125,10 +125,10 @@ Answer:
 sudo ./target/release/dns-socks-server 0.0.0.0:53
 ```
 
-### On Client (local or Iran VM):
+### On Client:
 ```bash
 # Run DNS SOCKS proxy pointing to server
-./target/release/dns-socks-client 23.128.36.101:53
+./target/release/dns-socks-client <server-ip>:53
 
 # Configure browser to use SOCKS5 proxy: 127.0.0.1:1080
 # Or use curl:
@@ -138,8 +138,8 @@ curl -x socks5h://127.0.0.1:1080 https://www.google.com/
 ## Next Steps
 
 1. ✅ **Build Linux binaries** for deployment
-2. ✅ **Deploy to nooshdaroo.net** server
-3. ⏳ **Test from Iran VM** with tcpdump to prove UDP DNS packets
+2. ✅ **Deploy to production** server
+3. ⏳ **Test from restrictive network** with tcpdump to prove UDP DNS packets
 4. ⏳ **Integrate into main nooshdaroo** proxy (if desired)
 
 ## Files Created
