@@ -373,34 +373,57 @@ async fn relay_with_noise_only(
     mut noise: NoiseTransport,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut client_buf = vec![0u8; 8192];
+    let mut client_closed = false;
+    let mut server_closed = false;
 
     loop {
         tokio::select! {
             // Read from client, encrypt+wrap with TLS, send to server
-            result = client.read(&mut client_buf) => {
+            result = client.read(&mut client_buf), if !client_closed => {
                 match result {
-                    Ok(0) => break, // EOF
+                    Ok(0) => {
+                        // Client closed write half - shutdown server write, but keep reading
+                        log::debug!("Client closed connection, shutting down server write");
+                        client_closed = true;
+                        if server_closed {
+                            break;
+                        }
+                    }
                     Ok(n) => {
                         // NoiseTransport.write() handles encryption AND TLS wrapping
                         noise.write(&mut server, &client_buf[..n]).await?;
                     }
                     Err(e) => {
                         log::debug!("Client read error: {}", e);
-                        break;
+                        client_closed = true;
+                        if server_closed {
+                            break;
+                        }
                     }
                 }
             }
             // Read from server (TLS-wrapped), unwrap+decrypt, send to client
-            result = noise.read(&mut server) => {
+            result = noise.read(&mut server), if !server_closed => {
                 match result {
                     Ok(data) if !data.is_empty() => {
                         // NoiseTransport.read() handles TLS unwrapping AND decryption
                         client.write_all(&data).await?;
+                        client.flush().await?;
                     }
-                    Ok(_) => break, // Empty read = EOF
+                    Ok(_) => {
+                        // Server closed connection
+                        log::debug!("Server closed connection");
+                        server_closed = true;
+                        if client_closed {
+                            break;
+                        }
+                    }
                     Err(e) => {
                         log::debug!("Noise read error: {}", e);
-                        break;
+                        server_closed = true;
+                        if client_closed {
+                            break;
+                        }
                     }
                 }
             }

@@ -679,34 +679,57 @@ async fn relay_with_noise_only(
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let mut target_buf = vec![0u8; 8192];
+    let mut tunnel_closed = false;
+    let mut target_closed = false;
 
     loop {
         tokio::select! {
             // Read from tunnel (TLS-wrapped), unwrap+decrypt, write to target
-            result = noise.read(&mut tunnel) => {
+            result = noise.read(&mut tunnel), if !tunnel_closed => {
                 match result {
                     Ok(data) if !data.is_empty() => {
                         // NoiseTransport.read() handles TLS unwrapping AND decryption
                         target.write_all(&data).await?;
+                        target.flush().await?;
                     }
-                    Ok(_) => break, // Empty read = EOF
+                    Ok(_) => {
+                        // Tunnel closed connection
+                        log::debug!("Tunnel closed connection");
+                        tunnel_closed = true;
+                        if target_closed {
+                            break;
+                        }
+                    }
                     Err(e) => {
                         log::debug!("Noise read error: {}", e);
-                        break;
+                        tunnel_closed = true;
+                        if target_closed {
+                            break;
+                        }
                     }
                 }
             }
             // Read from target, encrypt+wrap with TLS, write to tunnel
-            result = target.read(&mut target_buf) => {
+            result = target.read(&mut target_buf), if !target_closed => {
                 match result {
-                    Ok(0) => break, // EOF
+                    Ok(0) => {
+                        // Target closed write half - shutdown tunnel write, but keep reading
+                        log::debug!("Target closed connection, shutting down tunnel write");
+                        target_closed = true;
+                        if tunnel_closed {
+                            break;
+                        }
+                    }
                     Ok(n) => {
                         // NoiseTransport.write() handles encryption AND TLS wrapping
                         noise.write(&mut tunnel, &target_buf[..n]).await?;
                     }
                     Err(e) => {
                         log::debug!("Target read error: {}", e);
-                        break;
+                        target_closed = true;
+                        if tunnel_closed {
+                            break;
+                        }
                     }
                 }
             }
