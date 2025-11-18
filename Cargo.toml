@@ -20,6 +20,14 @@ path = "src/lib.rs"
 name = "nooshdaroo"
 path = "src/main.rs"
 
+[[bin]]
+name = "dns-socks-client"
+path = "src/bin/dns_socks_client.rs"
+
+[[bin]]
+name = "dns-socks-server"
+path = "src/bin/dns_socks_server.rs"
+
 [dependencies]
 # Async runtime
 tokio = { version = "1.17.0", features = ["macros", "rt", "rt-multi-thread", "io-util", "net", "sync", "time", "fs"] }
@@ -60,6 +68,7 @@ clap = { version = "4.5", features = ["derive", "env", "cargo"] }
 # Noise Protocol for encrypted transport
 snow = "0.9"
 base64 = "0.22"
+hex = "0.4"
 
 [build-dependencies]
 chrono = "0.4"
@@ -76,3 +85,7 @@ strip = true
 
 [profile.dev]
 opt-level = 0
+
+[[example]]
+name = "dns_tunnel_test"
+path = "examples/dns_tunnel_test.rs"

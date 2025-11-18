@@ -1,0 +1,116 @@
+// DNS UDP Tunnel Protocol
+// Encodes encrypted data in DNS labels for Iran censorship bypass
+// Based on dnstt approach: ab3d-01f7-c9e2-498b.example.com
+//
+// Key features:
+// - Valid DNS query/response format (passes DPI)
+// - Data encoded in subdomain labels (max 63 bytes per label)
+// - Looks like legitimate DNS traffic
+// - Works through Iran's censorship system
+
+@SEGMENT.FORMATS
+
+  // DNS Tunnel Query - Client encodes data in subdomain labels
+  DEFINE DnsTunnelQuery
+    // Standard DNS header (12 bytes)
+    { NAME: transaction_id ; TYPE: [u8; 2] },
+    { NAME: flags          ; TYPE: u16 },      // 0x0100 = standard query
+    { NAME: qdcount        ; TYPE: u16 },      // 0x0001 = 1 question
+    { NAME: ancount        ; TYPE: u16 },      // 0x0000 = 0 answers
+    { NAME: nscount        ; TYPE: u16 },      // 0x0000 = 0 authority
+    { NAME: arcount        ; TYPE: u16 },      // 0x0000 = 0 additional
+
+    // Question section - QNAME encoded with payload
+    // Format: <hex-label1>-<hex-label2>-<hex-label3>.tunnel.example.com
+    // Each label is hex-encoded chunk of encrypted data
+    { NAME: encoded_qname  ; TYPE: [u8; encoded_qname.size_of] },
+    { NAME: qtype          ; TYPE: u16 },      // 0x0001 = A record
+    { NAME: qclass         ; TYPE: u16 };      // 0x0001 = IN class
+
+  // DNS Tunnel Response - Server encodes data in TXT record
+  DEFINE DnsTunnelResponse
+    // Standard DNS header (12 bytes)
+    { NAME: transaction_id ; TYPE: [u8; 2] },
+    { NAME: flags          ; TYPE: u16 },      // 0x8180 = standard response
+    { NAME: qdcount        ; TYPE: u16 },      // 0x0001 = 1 question
+    { NAME: ancount        ; TYPE: u16 },      // 0x0001 = 1 answer
+    { NAME: nscount        ; TYPE: u16 },      // 0x0000
+    { NAME: arcount        ; TYPE: u16 },      // 0x0000
+
+    // Echo back question
+    { NAME: question_echo  ; TYPE: [u8; question_echo.size_of] },
+
+    // Answer section - TXT record with encoded payload
+    { NAME: answer_name    ; TYPE: u16 },      // 0xc00c = pointer to question
+    { NAME: answer_type    ; TYPE: u16 },      // 0x0010 = TXT record
+    { NAME: answer_class   ; TYPE: u16 },      // 0x0001 = IN
+    { NAME: ttl            ; TYPE: u32 },      // Time to live
+    { NAME: rdlength       ; TYPE: u16 },      // Length of RDATA
+    { NAME: txt_data       ; TYPE: [u8; rdlength.size_of] };  // Encoded payload
+
+@SEGMENT.SEMANTICS
+
+  // Query semantics
+  { FORMAT: DnsTunnelQuery; FIELD: transaction_id; SEMANTIC: RANDOM };
+  { FORMAT: DnsTunnelQuery; FIELD: flags;          SEMANTIC: FIXED_VALUE(0x0100) };
+  { FORMAT: DnsTunnelQuery; FIELD: qdcount;        SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsTunnelQuery; FIELD: ancount;        SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsTunnelQuery; FIELD: nscount;        SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsTunnelQuery; FIELD: arcount;        SEMANTIC: FIXED_VALUE(0x0000) };
+
+  // QNAME contains the encrypted payload encoded as hex in labels
+  // Example: \x08ab3d01f7\x08c9e2498b\x06tunnel\x07example\x03com\x00
+  // This will be dynamically generated to encode the actual payload
+  { FORMAT: DnsTunnelQuery; FIELD: encoded_qname;  SEMANTIC: PAYLOAD };
+  { FORMAT: DnsTunnelQuery; FIELD: qtype;          SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsTunnelQuery; FIELD: qclass;         SEMANTIC: FIXED_VALUE(0x0001) };
+
+  // Response semantics
+  { FORMAT: DnsTunnelResponse; FIELD: transaction_id; SEMANTIC: RANDOM };
+  { FORMAT: DnsTunnelResponse; FIELD: flags;          SEMANTIC: FIXED_VALUE(0x8180) };
+  { FORMAT: DnsTunnelResponse; FIELD: qdcount;        SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsTunnelResponse; FIELD: ancount;        SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsTunnelResponse; FIELD: nscount;        SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsTunnelResponse; FIELD: arcount;        SEMANTIC: FIXED_VALUE(0x0000) };
+
+  // Echo the question
+  { FORMAT: DnsTunnelResponse; FIELD: question_echo;  SEMANTIC: LENGTH };
+
+  // Answer with TXT record containing response payload
+  { FORMAT: DnsTunnelResponse; FIELD: answer_name;    SEMANTIC: FIXED_VALUE(0xc00c) };
+  { FORMAT: DnsTunnelResponse; FIELD: answer_type;    SEMANTIC: FIXED_VALUE(0x0010) };
+  { FORMAT: DnsTunnelResponse; FIELD: answer_class;   SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsTunnelResponse; FIELD: ttl;            SEMANTIC: FIXED_VALUE(0x0000003c) };
+  { FORMAT: DnsTunnelResponse; FIELD: rdlength;       SEMANTIC: LENGTH };
+  { FORMAT: DnsTunnelResponse; FIELD: txt_data;       SEMANTIC: PAYLOAD };
+
+@SEGMENT.SEQUENCE
+
+  // UDP-based communication - no handshake, just data phase
+  { ROLE: CLIENT; PHASE: DATA; FORMAT: DnsTunnelQuery };
+  { ROLE: SERVER; PHASE: DATA; FORMAT: DnsTunnelResponse };
+
+// Implementation notes:
+//
+// 1. Label encoding (client query):
+//    - Take encrypted payload chunk (e.g., 16 bytes)
+//    - Hex encode: ab3d01f7c9e2498b...
+//    - Split into labels (max 63 chars each): ab3d01f7-c9e2498b
+//    - Create QNAME: \x08ab3d01f7\x08c9e2498b\x06tunnel\x07example\x03com\x00
+//    - Total max ~200 bytes of payload per query
+//
+// 2. TXT record encoding (server response):
+//    - TXT records can hold up to 255 bytes per string
+//    - Can chain multiple TXT strings for larger payloads
+//    - Format: \x14<20 bytes data>\x14<20 bytes data>...
+//
+// 3. Fragmentation:
+//    - Large payloads split across multiple DNS queries
+//    - Use transaction_id for sequencing
+//    - Implement reassembly buffer on both sides
+//
+// 4. DPI evasion:
+//    - Queries look like subdomain lookups (common pattern)
+//    - TXT responses are legitimate DNS record type
+//    - Timing and size distribution match real DNS
+//    - Cannot be blocked without breaking legitimate DNS
