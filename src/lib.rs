@@ -103,7 +103,7 @@ pub use noise_transport::{
     NoiseTransport,
 };
 pub use protocol::{DetectionScore, ProtocolId, ProtocolMeta, Transport};
-pub use protocol_wrapper::ProtocolWrapper;
+pub use protocol_wrapper::{ProtocolWrapper, WrapperRole};
 pub use proxy::{HttpProxyServer, ProxyType, UnifiedProxyListener};
 pub use psf::{PsfInterpreter, ProtocolFrame};
 pub use shapeshift::ShapeShiftController;

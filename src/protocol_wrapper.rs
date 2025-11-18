@@ -8,6 +8,13 @@ use crate::protocol::ProtocolId;
 use crate::traffic::TrafficShaper;
 use crate::psf::{PsfInterpreter, ProtocolFrame};
 
+/// Role of the protocol wrapper (client or server)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WrapperRole {
+    Client,
+    Server,
+}
+
 // Embed all PSF files at compile time
 const DNS_PSF: &str = include_str!("../protocols/dns/dns.psf");
 const DNS_GOOGLE_PSF: &str = include_str!("../protocols/dns/dns_google_com.psf");
@@ -22,6 +29,7 @@ const TLS13_PSF: &str = include_str!("../protocols/tls/tls13.psf");
 /// Wraps Noise encrypted frames with protocol-specific headers
 pub struct ProtocolWrapper {
     protocol_id: ProtocolId,
+    role: WrapperRole,
     shaper: Option<TrafficShaper>,
     psf_interpreter: Option<PsfInterpreter>,
     client_frame: Option<ProtocolFrame>,
@@ -57,7 +65,7 @@ fn get_psf_content(protocol: &str) -> Option<&'static str> {
 
 impl ProtocolWrapper {
     /// Create a new protocol wrapper
-    pub fn new(protocol_id: ProtocolId, shaper: Option<TrafficShaper>) -> Self {
+    pub fn new(protocol_id: ProtocolId, role: WrapperRole, shaper: Option<TrafficShaper>) -> Self {
         // Try to load PSF interpreter for this protocol
         let protocol_str = protocol_id.as_str();
 
@@ -95,6 +103,7 @@ impl ProtocolWrapper {
 
         Self {
             protocol_id,
+            role,
             shaper,
             psf_interpreter,
             client_frame,
@@ -117,25 +126,32 @@ impl ProtocolWrapper {
         }
 
         // Try PSF-based wrapping for other protocols
-        if let Some(ref frame) = self.client_frame {
+        // Use the frame matching our role: client uses client_frame, server uses server_frame
+        let frame = match self.role {
+            WrapperRole::Client => &self.client_frame,
+            WrapperRole::Server => &self.server_frame,
+        };
+
+        if let Some(ref frame) = frame {
             match frame.wrap(noise_data) {
                 Ok(wrapped) => {
                     log::debug!(
-                        "Wrapped {} bytes of Noise data into {} bytes using PSF for {}",
+                        "Wrapped {} bytes of Noise data into {} bytes using {:?} PSF for {}",
                         noise_data.len(),
                         wrapped.len(),
+                        self.role,
                         self.protocol_id.as_str()
                     );
                     return Ok(wrapped);
                 }
                 Err(e) => {
-                    log::warn!("PSF wrapping failed for {}: {}", self.protocol_id.as_str(), e);
+                    log::warn!("PSF wrapping failed for {} ({:?}): {}", self.protocol_id.as_str(), self.role, e);
                 }
             }
         }
 
         // Final fallback: pass through raw for unsupported protocols
-        log::warn!("Protocol {} not supported for wrapping, using raw Noise frames", self.protocol_id.as_str());
+        log::warn!("Protocol {} not supported for wrapping ({:?}), using raw Noise frames", self.protocol_id.as_str(), self.role);
         Ok(noise_data.to_vec())
     }
 
@@ -149,19 +165,26 @@ impl ProtocolWrapper {
         }
 
         // Try PSF-based unwrapping for other protocols
-        if let Some(ref frame) = self.server_frame {
+        // Unwrap what the OTHER side sent: client unwraps server_frame, server unwraps client_frame
+        let frame = match self.role {
+            WrapperRole::Client => &self.server_frame,  // Client receives server frames
+            WrapperRole::Server => &self.client_frame,  // Server receives client frames
+        };
+
+        if let Some(ref frame) = frame {
             match frame.unwrap(wrapped_data) {
                 Ok(unwrapped) => {
                     log::debug!(
-                        "Unwrapped {} bytes of protocol data into {} bytes of Noise data using PSF for {}",
+                        "Unwrapped {} bytes of protocol data into {} bytes of Noise data using {:?} PSF for {}",
                         wrapped_data.len(),
                         unwrapped.len(),
+                        self.role,
                         self.protocol_id.as_str()
                     );
                     return Ok(unwrapped);
                 }
                 Err(e) => {
-                    log::warn!("PSF unwrapping failed for {}: {}", self.protocol_id.as_str(), e);
+                    log::warn!("PSF unwrapping failed for {} ({:?}): {}", self.protocol_id.as_str(), self.role, e);
                 }
             }
         }
@@ -402,7 +425,7 @@ mod tests {
 
     #[test]
     fn test_https_wrap_unwrap_roundtrip() {
-        let mut wrapper = ProtocolWrapper::new(ProtocolId::from("https"), None);
+        let mut wrapper = ProtocolWrapper::new(ProtocolId::from("https"), WrapperRole::Client, None);
 
         // Simulate Noise encrypted data (1000 bytes payload + 16 byte MAC)
         let noise_data = vec![0xAB; 1016];
@@ -428,7 +451,7 @@ mod tests {
 
     #[test]
     fn test_https_unwrap_invalid_content_type() {
-        let wrapper = ProtocolWrapper::new(ProtocolId::from("https"), None);
+        let wrapper = ProtocolWrapper::new(ProtocolId::from("https"), WrapperRole::Client, None);
 
         // Invalid content type
         let bad_data = vec![0x16, 0x03, 0x03, 0x00, 0x10];

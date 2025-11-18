@@ -551,7 +551,7 @@ async fn handle_tunnel_connection(
     log::debug!("Performing Noise handshake with {} using protocol {}", peer_addr, protocol_id.as_str());
 
     // Create protocol wrapper for handshake wrapping
-    let mut protocol_wrapper = ProtocolWrapper::new(protocol_id.clone(), None);
+    let mut protocol_wrapper = ProtocolWrapper::new(protocol_id.clone(), nooshdaroo::WrapperRole::Server, None);
 
     // Perform server-side Noise handshake with protocol wrapping
     let mut noise_transport = NoiseTransport::server_handshake(&mut tunnel_stream, &noise_config, Some(&mut protocol_wrapper))
@@ -660,7 +660,7 @@ async fn handle_tunnel_connection(
         }
     } else {
         // Use protocol wrapper for obfuscation
-        let wrapper = nooshdaroo::ProtocolWrapper::new(protocol_id.clone(), None);
+        let wrapper = nooshdaroo::ProtocolWrapper::new(protocol_id.clone(), nooshdaroo::WrapperRole::Server, None);
         log::debug!("Created {} protocol wrapper for traffic obfuscation", protocol_id.as_str());
         if let Err(e) = relay_tunnel_to_target(tunnel_stream, noise_transport, target_stream, wrapper).await {
             log::debug!("Relay ended for {}:{}: {}", target_host, target_port, e);

@@ -114,10 +114,7 @@
 
 @SEGMENT.SEQUENCE
 
-  // DNS handshake (initial query/response)
-  { ROLE: CLIENT; PHASE: HANDSHAKE; FORMAT: DnsHandshakeQuery };
-  { ROLE: SERVER; PHASE: HANDSHAKE; FORMAT: DnsHandshakeResponse };
-
-  // Ongoing DNS queries (data phase)
+  // Skip handshake phase - use DATA frames for both Noise handshake and data transfer
+  // This avoids client/server role mismatch during Noise handshake wrapping
   { ROLE: CLIENT; PHASE: DATA; FORMAT: DnsQuery };
   { ROLE: SERVER; PHASE: DATA; FORMAT: DnsResponse };

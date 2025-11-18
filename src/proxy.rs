@@ -226,7 +226,7 @@ async fn handle_socks5(
                 };
 
                 // Create protocol wrapper for handshake wrapping
-                let mut protocol_wrapper = ProtocolWrapper::new(protocol_id.clone(), None);
+                let mut protocol_wrapper = ProtocolWrapper::new(protocol_id.clone(), crate::WrapperRole::Client, None);
                 log::debug!("Using protocol: {}", protocol_id.as_str());
 
                 // Perform Noise handshake with protocol wrapping
@@ -316,7 +316,7 @@ async fn handle_socks5(
                     }
                 } else {
                     // Use protocol wrapper for obfuscation
-                    let wrapper = crate::ProtocolWrapper::new(protocol_id.clone(), None);
+                    let wrapper = crate::ProtocolWrapper::new(protocol_id.clone(), crate::WrapperRole::Client, None);
                     log::debug!("Created {} protocol wrapper for traffic obfuscation", protocol_id.as_str());
                     if let Err(e) = relay_through_noise_tunnel(socket, server_stream, noise_transport, wrapper, controller).await {
                         log::debug!("Tunnel relay ended for {}:{}: {}", target.host, target.port, e);
@@ -453,7 +453,7 @@ async fn relay_through_noise_tunnel(
                     if guard.rotate().is_ok() {
                         let new_protocol = guard.stats().current_protocol.clone();
                         log::info!("Protocol rotation triggered: switching to {}", new_protocol.as_str());
-                        wrapper = crate::ProtocolWrapper::new(new_protocol, None);
+                        wrapper = crate::ProtocolWrapper::new(new_protocol, crate::WrapperRole::Client, None);
                         log::debug!("Protocol wrapper updated for rotation");
                     }
                 }
