@@ -566,7 +566,8 @@ async fn handle_tunnel_connection(
                           protocol_id.as_str() == "dns" || // DNS over TLS
                           protocol_id.as_str() == "dns-google";
 
-    if config.detection.enable_tls_session_emulation && is_tls_protocol {
+    let use_tls_emulation = config.detection.enable_tls_session_emulation && is_tls_protocol;
+    if use_tls_emulation {
         noise_transport.enable_tls_wrapping();
         log::info!("Full TLS session emulation enabled for protocol: {}", protocol_id.as_str());
     }
@@ -645,16 +646,71 @@ async fn handle_tunnel_connection(
         }
     };
 
-    // Create protocol wrapper matching client protocol
-    let wrapper = nooshdaroo::ProtocolWrapper::new(protocol_id.clone(), None);
-    log::debug!("Created {} protocol wrapper for traffic obfuscation", protocol_id.as_str());
-
     // Relay data bidirectionally between client tunnel and target
     log::debug!("Starting bidirectional relay for {}:{}", target_host, target_port);
-    if let Err(e) = relay_tunnel_to_target(tunnel_stream, noise_transport, target_stream, wrapper).await {
-        log::debug!("Relay ended for {}:{}: {}", target_host, target_port, e);
+    if use_tls_emulation {
+        // Use NoiseTransport's built-in TLS wrapping (no protocol wrapper)
+        log::debug!("Using TLS session emulation (no protocol wrapper)");
+        if let Err(e) = relay_with_noise_only(tunnel_stream, noise_transport, target_stream).await {
+            log::debug!("Relay ended for {}:{}: {}", target_host, target_port, e);
+        } else {
+            log::debug!("Relay completed for {}:{}", target_host, target_port);
+        }
     } else {
-        log::debug!("Relay completed for {}:{}", target_host, target_port);
+        // Use protocol wrapper for obfuscation
+        let wrapper = nooshdaroo::ProtocolWrapper::new(protocol_id.clone(), None);
+        log::debug!("Created {} protocol wrapper for traffic obfuscation", protocol_id.as_str());
+        if let Err(e) = relay_tunnel_to_target(tunnel_stream, noise_transport, target_stream, wrapper).await {
+            log::debug!("Relay ended for {}:{}: {}", target_host, target_port, e);
+        } else {
+            log::debug!("Relay completed for {}:{}", target_host, target_port);
+        }
+    }
+
+    Ok(())
+}
+
+/// Relay using NoiseTransport only (for TLS session emulation)
+async fn relay_with_noise_only(
+    mut tunnel: tokio::net::TcpStream,
+    mut noise: NoiseTransport,
+    mut target: tokio::net::TcpStream,
+) -> Result<()> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut target_buf = vec![0u8; 8192];
+
+    loop {
+        tokio::select! {
+            // Read from tunnel (TLS-wrapped), unwrap+decrypt, write to target
+            result = noise.read(&mut tunnel) => {
+                match result {
+                    Ok(data) if !data.is_empty() => {
+                        // NoiseTransport.read() handles TLS unwrapping AND decryption
+                        target.write_all(&data).await?;
+                    }
+                    Ok(_) => break, // Empty read = EOF
+                    Err(e) => {
+                        log::debug!("Noise read error: {}", e);
+                        break;
+                    }
+                }
+            }
+            // Read from target, encrypt+wrap with TLS, write to tunnel
+            result = target.read(&mut target_buf) => {
+                match result {
+                    Ok(0) => break, // EOF
+                    Ok(n) => {
+                        // NoiseTransport.write() handles encryption AND TLS wrapping
+                        noise.write(&mut tunnel, &target_buf[..n]).await?;
+                    }
+                    Err(e) => {
+                        log::debug!("Target read error: {}", e);
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     Ok(())
