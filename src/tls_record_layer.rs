@@ -66,7 +66,7 @@ impl Default for TlsRecordLayer {
     fn default() -> Self {
         Self {
             max_record_size: MAX_TLS_RECORD_SIZE,
-            add_padding: true,
+            add_padding: false, // Disabled: padding breaks Noise decryption
             padding_range: (0, 64), // 0-64 bytes random padding
         }
     }

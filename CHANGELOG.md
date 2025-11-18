@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-11-18
+
+### Added
+- **Full TLS 1.3 Session Emulation** - Complete TLS record layer wrapping to defeat deep packet inspection
+  - All Noise encrypted data now wrapped in proper TLS 1.3 Application Data records (0x17)
+  - 5-byte TLS record headers with correct content type, version (0x0303), and length
+  - Automatic fragmentation for payloads larger than 16KB
+  - Proper TLS close_notify alerts for graceful shutdown
+  - Auto-enabled for TLS-based protocols: https, https-google, tls, dns
+  - Defeats session-level DPI that detects "TLS handshake followed by non-TLS data"
+
+### Changed
+- **Embedded Protocols** - All PSF protocol files now embedded in binary at compile time
+  - No longer requires `protocols/` directory for deployment
+  - Simplified deployment: just copy binary + config file
+  - `protocol_dir` field now optional in config (deprecated but backwards compatible)
+  - Supported embedded protocols: https, https-google, dns, dns-google, tls, tls13, ssh, quic
+
+### Fixed
+- **DNS PSF Syntax Error** - Fixed `FIXED_BYTES` semantic requiring brackets instead of parentheses
+  - Changed `FIXED_BYTES(0x06, ...)` to `FIXED_BYTES[0x06, ...]` for proper parsing
+- **TLS Padding Issue** - Disabled TLS record padding by default
+  - Padding was breaking Noise decryption (receiver couldn't distinguish data from padding)
+  - Can be re-enabled later with proper padding indicator protocol
+- **Configuration Cleanup** - Removed deprecated `forward_addr` and `forward_proto` from server-simple.toml
+
+### Security
+- **Iran DPI Bypass** - Full TLS session emulation specifically designed to bypass Iran's censorship
+  - Previous implementation only wrapped handshake, leaving data frames as raw Noise
+  - Iran's DPI detected pattern: "TLS handshake → non-TLS data" and blocked connections
+  - New implementation wraps ALL traffic in TLS records, appearing as legitimate HTTPS throughout session
+  - Tested and validated against live Iran censorship infrastructure
+
 ## [0.2.0] - 2025-11-17
 
 ### Added
