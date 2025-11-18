@@ -112,12 +112,12 @@
   { FORMAT: DnsResponse; FIELD: response_len;   SEMANTIC: LENGTH };
   { FORMAT: DnsResponse; FIELD: response_data;  SEMANTIC: PAYLOAD };
 
-@SEGMENT.ROLES
+@SEGMENT.SEQUENCE
 
-  ROLE CLIENT
-    HANDSHAKE DnsHandshakeQuery,
-    DATA DnsQuery;
+  // DNS handshake (initial query/response)
+  { ROLE: CLIENT; PHASE: HANDSHAKE; FORMAT: DnsHandshakeQuery };
+  { ROLE: SERVER; PHASE: HANDSHAKE; FORMAT: DnsHandshakeResponse };
 
-  ROLE SERVER
-    HANDSHAKE DnsHandshakeResponse,
-    DATA DnsResponse;
+  // Ongoing DNS queries (data phase)
+  { ROLE: CLIENT; PHASE: DATA; FORMAT: DnsQuery };
+  { ROLE: SERVER; PHASE: DATA; FORMAT: DnsResponse };
