@@ -627,6 +627,8 @@ async fn handle_tunnel_connection(
 
     let target_stream = match tokio::net::TcpStream::connect(&target_addr).await {
         Ok(stream) => {
+            // Enable TCP_NODELAY for low latency (critical for HTTP/2)
+            stream.set_nodelay(true)?;
             log::info!("Connected to target {}:{}", target_host, target_port);
             // Send success response to client through tunnel
             noise_transport.write(&mut tunnel_stream, b"OK").await?;

@@ -213,6 +213,8 @@ async fn handle_socks5(
                 // Connect to server
                 let mut server_stream = match TcpStream::connect(server_addr).await {
                     Ok(stream) => {
+                        // Enable TCP_NODELAY for low latency (critical for HTTP/2)
+                        stream.set_nodelay(true)?;
                         log::debug!("Connected to server {}", server_addr);
                         stream
                     }
