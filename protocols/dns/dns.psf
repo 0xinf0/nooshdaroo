@@ -7,7 +7,7 @@
   // DNS Handshake Query (flattened - no nested structs)
   DEFINE DnsHandshakeQuery
     // Header fields (inlined)
-    { NAME: transaction_id ; TYPE: u16 },
+    { NAME: transaction_id ; TYPE: [u8; 2] },
     { NAME: flags          ; TYPE: u16 },
     { NAME: questions      ; TYPE: u16 },
     { NAME: answers        ; TYPE: u16 },
@@ -22,7 +22,7 @@
   // DNS Handshake Response (flattened)
   DEFINE DnsHandshakeResponse
     // Header fields (inlined)
-    { NAME: transaction_id ; TYPE: u16 },
+    { NAME: transaction_id ; TYPE: [u8; 2] },
     { NAME: flags          ; TYPE: u16 },
     { NAME: questions      ; TYPE: u16 },
     { NAME: answers        ; TYPE: u16 },
@@ -41,7 +41,7 @@
   // DNS Query (from client - for data)
   DEFINE DnsQuery
     // Header fields
-    { NAME: transaction_id ; TYPE: u16 },
+    { NAME: transaction_id ; TYPE: [u8; 2] },
     { NAME: flags          ; TYPE: u16 },
     { NAME: questions      ; TYPE: u16 },
     { NAME: answers        ; TYPE: u16 },
@@ -54,7 +54,7 @@
   // DNS Response (from server - for data)
   DEFINE DnsResponse
     // Header fields
-    { NAME: transaction_id ; TYPE: u16 },
+    { NAME: transaction_id ; TYPE: [u8; 2] },
     { NAME: flags          ; TYPE: u16 },
     { NAME: questions      ; TYPE: u16 },
     { NAME: answers        ; TYPE: u16 },
