@@ -74,7 +74,7 @@
   { FORMAT: DnsHandshakeQuery; FIELD: authority;      SEMANTIC: FIXED_VALUE(0x0000) };
   { FORMAT: DnsHandshakeQuery; FIELD: additional;     SEMANTIC: FIXED_VALUE(0x0000) };
   { FORMAT: DnsHandshakeQuery; FIELD: qname_len;      SEMANTIC: LENGTH };
-  { FORMAT: DnsHandshakeQuery; FIELD: qname;          SEMANTIC: FIXED_BYTES(0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f, 0x6d, 0x00) };
+  { FORMAT: DnsHandshakeQuery; FIELD: qname;          SEMANTIC: FIXED_BYTES([0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f, 0x6d, 0x00]) };
   { FORMAT: DnsHandshakeQuery; FIELD: qtype;          SEMANTIC: FIXED_VALUE(0x0001) };
   { FORMAT: DnsHandshakeQuery; FIELD: qclass;         SEMANTIC: FIXED_VALUE(0x0001) };
 
@@ -86,7 +86,7 @@
   { FORMAT: DnsHandshakeResponse; FIELD: authority;      SEMANTIC: FIXED_VALUE(0x0000) };
   { FORMAT: DnsHandshakeResponse; FIELD: additional;     SEMANTIC: FIXED_VALUE(0x0000) };
   { FORMAT: DnsHandshakeResponse; FIELD: qname_len;      SEMANTIC: LENGTH };
-  { FORMAT: DnsHandshakeResponse; FIELD: qname;          SEMANTIC: FIXED_BYTES(0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f, 0x6d, 0x00) };
+  { FORMAT: DnsHandshakeResponse; FIELD: qname;          SEMANTIC: FIXED_BYTES([0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f, 0x6d, 0x00]) };
   { FORMAT: DnsHandshakeResponse; FIELD: qtype;          SEMANTIC: FIXED_VALUE(0x0001) };
   { FORMAT: DnsHandshakeResponse; FIELD: qclass;         SEMANTIC: FIXED_VALUE(0x0001) };
   { FORMAT: DnsHandshakeResponse; FIELD: rdlength;       SEMANTIC: LENGTH };
