@@ -7,7 +7,7 @@ password = "nooshdaroo-client-secret"
 
 [shapeshift.strategy]
 type = "fixed"
-protocol = "dns"
+protocol = "dns-udp-tunnel"
 
 [socks]
 listen_addr = "127.0.0.1:1080"

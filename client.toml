@@ -13,7 +13,7 @@ auth_required = false
 
 [shapeshift.strategy]
 type = "fixed"
-protocol = "dns"
+protocol = "dns-udp-tunnel"
 
 [transport]
 pattern = "nk"
