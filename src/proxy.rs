@@ -228,7 +228,7 @@ async fn handle_socks5(
                 log::debug!("Using protocol: {}", protocol_id.as_str());
 
                 // Perform Noise handshake with protocol wrapping
-                let mut noise_transport = match NoiseTransport::client_handshake(&mut server_stream, &noise_config, Some(&mut protocol_wrapper)).await {
+                let (mut noise_transport, use_tls_emulation) = match NoiseTransport::client_handshake(&mut server_stream, &noise_config, Some(&mut protocol_wrapper)).await {
                     Ok(mut transport) => {
                         log::debug!("Noise handshake completed with server using {}", protocol_id.as_str());
 
@@ -238,12 +238,14 @@ async fn handle_socks5(
                                               protocol_id.as_str() == "dns" || // DNS over TLS
                                               protocol_id.as_str() == "dns-google";
 
-                        if config.detection.enable_tls_session_emulation && is_tls_protocol {
+                        // Check if we should enable TLS session emulation
+                        let use_tls_emulation = config.detection.enable_tls_session_emulation && is_tls_protocol;
+                        if use_tls_emulation {
                             transport.enable_tls_wrapping();
                             log::info!("Full TLS session emulation enabled for protocol: {}", protocol_id.as_str());
                         }
 
-                        transport
+                        (transport, use_tls_emulation)
                     }
                     Err(e) => {
                         log::error!("Noise handshake failed: {}", e);
@@ -300,16 +302,25 @@ async fn handle_socks5(
                 send_reply(&mut socket, ReplyCode::Succeeded, &target).await?;
                 log::info!("Tunnel established to {}:{} via server", target.host, target.port);
 
-                // Create protocol wrapper using configured protocol
-                let wrapper = crate::ProtocolWrapper::new(protocol_id.clone(), None);
-                log::debug!("Created {} protocol wrapper for traffic obfuscation", protocol_id.as_str());
-
                 // Relay data bidirectionally through encrypted tunnel
                 log::debug!("Starting encrypted relay for {}:{}", target.host, target.port);
-                if let Err(e) = relay_through_noise_tunnel(socket, server_stream, noise_transport, wrapper, controller).await {
-                    log::debug!("Tunnel relay ended for {}:{}: {}", target.host, target.port, e);
+                if use_tls_emulation {
+                    // Use NoiseTransport's built-in TLS wrapping (no protocol wrapper)
+                    log::debug!("Using TLS session emulation (no protocol wrapper)");
+                    if let Err(e) = relay_with_noise_only(socket, server_stream, noise_transport).await {
+                        log::debug!("Tunnel relay ended for {}:{}: {}", target.host, target.port, e);
+                    } else {
+                        log::debug!("Tunnel relay completed successfully for {}:{}", target.host, target.port);
+                    }
                 } else {
-                    log::debug!("Tunnel relay completed successfully for {}:{}", target.host, target.port);
+                    // Use protocol wrapper for obfuscation
+                    let wrapper = crate::ProtocolWrapper::new(protocol_id.clone(), None);
+                    log::debug!("Created {} protocol wrapper for traffic obfuscation", protocol_id.as_str());
+                    if let Err(e) = relay_through_noise_tunnel(socket, server_stream, noise_transport, wrapper, controller).await {
+                        log::debug!("Tunnel relay ended for {}:{}: {}", target.host, target.port, e);
+                    } else {
+                        log::debug!("Tunnel relay completed successfully for {}:{}", target.host, target.port);
+                    }
                 }
             } else {
                 // NO SERVER CONFIGURED: Refuse connection for security
@@ -355,6 +366,50 @@ async fn handle_socks5(
 }
 
 /// Relay data through Noise-encrypted tunnel with protocol wrapping and dynamic rotation
+/// Relay using NoiseTransport only (for TLS session emulation)
+async fn relay_with_noise_only(
+    mut client: impl AsyncReadExt + AsyncWriteExt + Unpin,
+    mut server: TcpStream,
+    mut noise: NoiseTransport,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut client_buf = vec![0u8; 8192];
+
+    loop {
+        tokio::select! {
+            // Read from client, encrypt+wrap with TLS, send to server
+            result = client.read(&mut client_buf) => {
+                match result {
+                    Ok(0) => break, // EOF
+                    Ok(n) => {
+                        // NoiseTransport.write() handles encryption AND TLS wrapping
+                        noise.write(&mut server, &client_buf[..n]).await?;
+                    }
+                    Err(e) => {
+                        log::debug!("Client read error: {}", e);
+                        break;
+                    }
+                }
+            }
+            // Read from server (TLS-wrapped), unwrap+decrypt, send to client
+            result = noise.read(&mut server) => {
+                match result {
+                    Ok(data) if !data.is_empty() => {
+                        // NoiseTransport.read() handles TLS unwrapping AND decryption
+                        client.write_all(&data).await?;
+                    }
+                    Ok(_) => break, // Empty read = EOF
+                    Err(e) => {
+                        log::debug!("Noise read error: {}", e);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 async fn relay_through_noise_tunnel(
     mut client: impl AsyncReadExt + AsyncWriteExt + Unpin,
     mut server: TcpStream,
