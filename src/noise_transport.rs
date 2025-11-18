@@ -309,33 +309,41 @@ impl NoiseTransport {
         // CRITICAL: Send RAW without length prefix so DPI sees the real protocol bytes!
         if let Some(ref mut wrapper) = protocol_wrapper {
             if wrapper.has_handshake_support() {
+                // Pre-generate both handshakes to get their exact sizes
+                let client_handshake = wrapper.generate_client_handshake();
+                let server_handshake = wrapper.generate_server_handshake();
+
                 if is_initiator {
                     // Client: Send fake ClientHello (RAW, no length prefix)
-                    if let Some(fake_client_hello) = wrapper.generate_client_handshake() {
+                    if let Some(fake_client_hello) = client_handshake {
+                        let size = fake_client_hello.len();
                         stream.write_all(&fake_client_hello).await?;
                         stream.flush().await?;
-                        log::info!("Client: Sent fake protocol ClientHello ({} bytes, RAW)", fake_client_hello.len());
+                        log::info!("Client: Sent fake protocol ClientHello ({} bytes, RAW)", size);
                     }
 
-                    // Client: Receive fake ServerHello (RAW, fixed size based on protocol)
-                    // For TLS: ServerHello is always 95 bytes for our implementation
-                    let expected_size = 95; // TODO: get from protocol metadata
-                    stream.read_exact(&mut buf[..expected_size]).await?;
-                    log::info!("Client: Received fake protocol ServerHello ({} bytes, RAW)", expected_size);
-                    // We don't validate the ServerHello - just discard it
+                    // Client: Receive fake ServerHello (RAW, exact size based on protocol)
+                    if let Some(ref fake_server_hello) = server_handshake {
+                        let expected_size = fake_server_hello.len();
+                        stream.read_exact(&mut buf[..expected_size]).await?;
+                        log::info!("Client: Received fake protocol ServerHello ({} bytes, RAW)", expected_size);
+                        // We don't validate the ServerHello - just discard it
+                    }
                 } else {
-                    // Server: Receive fake ClientHello (RAW, fixed size based on protocol)
-                    // For TLS: ClientHello is always 260 bytes for our implementation
-                    let expected_size = 260; // TODO: get from protocol metadata
-                    stream.read_exact(&mut buf[..expected_size]).await?;
-                    log::info!("Server: Received fake protocol ClientHello ({} bytes, RAW)", expected_size);
-                    // We don't validate the ClientHello - just discard it
+                    // Server: Receive fake ClientHello (RAW, exact size based on protocol)
+                    if let Some(ref fake_client_hello) = client_handshake {
+                        let expected_size = fake_client_hello.len();
+                        stream.read_exact(&mut buf[..expected_size]).await?;
+                        log::info!("Server: Received fake protocol ClientHello ({} bytes, RAW)", expected_size);
+                        // We don't validate the ClientHello - just discard it
+                    }
 
                     // Server: Send fake ServerHello (RAW, no length prefix)
-                    if let Some(fake_server_hello) = wrapper.generate_server_handshake() {
+                    if let Some(fake_server_hello) = server_handshake {
+                        let size = fake_server_hello.len();
                         stream.write_all(&fake_server_hello).await?;
                         stream.flush().await?;
-                        log::info!("Server: Sent fake protocol ServerHello ({} bytes, RAW)", fake_server_hello.len());
+                        log::info!("Server: Sent fake protocol ServerHello ({} bytes, RAW)", size);
                     }
                 }
 
