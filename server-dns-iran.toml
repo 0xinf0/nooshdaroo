@@ -9,9 +9,9 @@ type = "fixed"
 protocol = "dns-udp-tunnel"
 
 [server]
-# Listen on all interfaces, port 5353 (mDNS/alternative DNS port)
-# Port 5353 doesn't require root privileges
-listen_addr = "0.0.0.0:5353"
+# Bind to specific IP to ensure responses come from the same IP as requests
+# This is critical for NAT traversal - responses must match the IP clients connect to
+listen_addr = "23.128.36.102:5353"
 
 [transport]
 pattern = "nk"

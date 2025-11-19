@@ -210,6 +210,11 @@ pub fn parse_dns_query(packet: &[u8]) -> Result<(u16, Vec<u8>), String> {
 
     while qname_end < packet.len() && packet[qname_end] != 0 {
         let len = packet[qname_end] as usize;
+        // Validate label length doesn't exceed packet bounds
+        if qname_end + 1 + len > packet.len() {
+            return Err(format!("Invalid QNAME: label at pos {} claims length {} but only {} bytes remain",
+                qname_end, len, packet.len() - qname_end - 1));
+        }
         qname_end += 1 + len;
     }
     qname_end += 1; // Include null terminator
