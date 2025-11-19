@@ -38,16 +38,21 @@ use tokio::time::{Duration, Instant};
 pub struct ReliableTransport<T> {
     /// KCP protocol state
     kcp: Arc<Mutex<Kcp<KcpOutput<T>>>>,
-    /// Read buffer for received data
-    read_buf: Arc<Mutex<VecDeque<u8>>>,
+    /// Channel receiver for decoded data from KCP
+    read_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+    /// Channel sender for decoded data (used by background task)
+    _read_tx: Arc<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
     /// Last update time
     last_update: Arc<Mutex<Instant>>,
+    /// Buffer for partially read data
+    partial_buf: Vec<u8>,
+    partial_pos: usize,
 }
 
 /// Output callback for KCP - sends packets to underlying transport
 struct KcpOutput<T> {
     transport: Arc<Mutex<T>>,
-    write_buf: Arc<Mutex<Vec<u8>>>,
+    write_buf: Arc<Mutex<VecDeque<Vec<u8>>>>,
 }
 
 impl<T> ReliableTransport<T>
@@ -63,7 +68,7 @@ where
     /// * `mtu` - Maximum transmission unit (should match transport fragment size)
     pub fn new(transport: T, conv_id: u32, mtu: usize) -> Result<Self> {
         let transport = Arc::new(Mutex::new(transport));
-        let write_buf = Arc::new(Mutex::new(Vec::new()));
+        let write_buf = Arc::new(Mutex::new(VecDeque::new()));
 
         let output = KcpOutput {
             transport: Arc::clone(&transport),
@@ -73,11 +78,11 @@ where
         let mut kcp = Kcp::new(conv_id, output);
 
         // Configure KCP for low latency (matching DNSTT settings)
-        // nodelay: 1 = enable
+        // nodelay: true = enable
         // interval: 10ms update interval
         // resend: 2 = fast resend (resend after 2 ACKs)
-        // nc: 1 = disable congestion control for low latency
-        kcp.set_nodelay(1, 10, 2, 1);
+        // nc: true = disable congestion control for low latency
+        kcp.set_nodelay(true, 10, 2, true);
 
         // Set window sizes (send and receive)
         kcp.set_wndsize(128, 128);
@@ -85,9 +90,15 @@ where
         // Set MTU to match transport fragment size
         kcp.set_mtu(mtu).map_err(|e| anyhow!("Failed to set MTU: {:?}", e))?;
 
+        // Perform initial update (KCP requires at least one update call before use)
+        kcp.update(0).ok();
+
         let kcp = Arc::new(Mutex::new(kcp));
-        let read_buf = Arc::new(Mutex::new(VecDeque::new()));
         let last_update = Arc::new(Mutex::new(Instant::now()));
+
+        // Create channel for decoded data from KCP
+        let (read_tx, read_rx) = tokio::sync::mpsc::unbounded_channel();
+        let read_tx = Arc::new(read_tx);
 
         // Start KCP update task
         let kcp_update = Arc::clone(&kcp);
@@ -105,10 +116,121 @@ where
             }
         });
 
+        // Start write task - send buffered KCP output to underlying transport
+        let transport_write = Arc::clone(&transport);
+        let write_buf_task = Arc::clone(&write_buf);
+        tokio::spawn(async move {
+            use tokio::io::AsyncWriteExt;
+
+            loop {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+
+                // Check if there's data to write
+                let packet = {
+                    let mut buf = write_buf_task.lock().await;
+                    buf.pop_front()
+                };
+
+                if let Some(data) = packet {
+                    log::debug!("Write task: dequeued {} bytes, writing to transport", data.len());
+                    // Write to underlying transport
+                    let mut transport = transport_write.lock().await;
+                    if let Err(e) = transport.write_all(&data).await {
+                        log::error!("Failed to write KCP output to transport: {}", e);
+                    } else {
+                        log::debug!("Write task: successfully wrote to transport");
+                    }
+                    if let Err(e) = transport.flush().await {
+                        log::error!("Failed to flush transport: {}", e);
+                    }
+                }
+            }
+        });
+
+        // Start read task - feed transport data into KCP
+        let transport_read = Arc::clone(&transport);
+        let kcp_input = Arc::clone(&kcp);
+        let read_tx_task = Arc::clone(&read_tx);
+        tokio::spawn(async move {
+            use tokio::io::AsyncReadExt;
+
+            let mut buf = vec![0u8; 2048];
+            loop {
+                // Read from underlying transport
+                let n = {
+                    let mut transport = transport_read.lock().await;
+                    match transport.read(&mut buf).await {
+                        Ok(0) => {
+                            log::debug!("Transport closed");
+                            break;
+                        }
+                        Ok(n) => n,
+                        Err(e) => {
+                            log::error!("Failed to read from transport: {}", e);
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+                            continue;
+                        }
+                    }
+                };
+
+                // Feed into KCP
+                {
+                    let mut kcp_guard = kcp_input.lock().await;
+                    if let Err(e) = kcp_guard.input(&buf[..n]) {
+                        log::error!("KCP input error: {:?}", e);
+                        continue;
+                    }
+                }
+
+                // Extract all decoded data from KCP and send to channel
+                loop {
+                    let peek_size = {
+                        let kcp_guard = kcp_input.lock().await;
+                        kcp_guard.peeksize().unwrap_or(0)
+                    };
+
+                    if peek_size == 0 {
+                        break;
+                    }
+
+                    // Read decoded data from KCP
+                    let mut temp_buf = vec![0u8; peek_size];
+                    let received = {
+                        let mut kcp_guard = kcp_input.lock().await;
+                        match kcp_guard.recv(&mut temp_buf) {
+                            Ok(n) => Some(n),
+                            Err(kcp::Error::RecvQueueEmpty) => None,
+                            Err(e) => {
+                                log::error!("KCP recv error: {:?}", e);
+                                None
+                            }
+                        }
+                    };
+
+                    if let Some(n) = received {
+                        // Send decoded data to channel (automatically wakes reader)
+                        temp_buf.truncate(n);
+                        if read_tx_task.send(temp_buf).is_err() {
+                            log::debug!("Read channel closed");
+                            return;
+                        }
+                    } else {
+                        break;
+                    }
+
+                    // Yield to prevent busy loop
+                    tokio::task::yield_now().await;
+                }
+            }
+        });
+
         Ok(Self {
             kcp,
-            read_buf,
+            read_rx,
+            _read_tx: read_tx,
             last_update,
+            partial_buf: Vec::new(),
+            partial_pos: 0,
         })
     }
 
@@ -132,7 +254,7 @@ where
     /// Input received packet into KCP
     pub async fn input(&self, data: &[u8]) -> Result<()> {
         let mut kcp = self.kcp.lock().await;
-        kcp.input(data).map_err(|e| anyhow!("KCP input error: {:?}", e))
+        kcp.input(data).map(|_| ()).map_err(|e| anyhow!("KCP input error: {:?}", e))
     }
 
     /// Check how many bytes can be read
@@ -148,18 +270,31 @@ where
     }
 }
 
-impl<T> kcp::KcpOutput for KcpOutput<T>
+impl<T> std::io::Write for KcpOutput<T>
 where
     T: AsyncWrite + Unpin + Send,
 {
-    fn output(&mut self, data: &[u8]) -> kcp::KcpResult<()> {
-        // Store data to write buffer - will be written by async task
+    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        // Queue packet to write buffer - will be written by async task
+        log::debug!("KCP output callback: writing {} bytes to write_buf", data.len());
         let mut buf = match self.write_buf.try_lock() {
             Ok(guard) => guard,
-            Err(_) => return Err(kcp::Error::UserBufNotEnough),
+            Err(_) => {
+                log::error!("KCP output callback: write_buf locked!");
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::WouldBlock,
+                    "Write buffer locked"
+                ));
+            }
         };
 
-        buf.extend_from_slice(data);
+        // Store as separate packet in queue
+        buf.push_back(data.to_vec());
+        log::debug!("KCP output callback: queued packet, queue size now: {}", buf.len());
+        Ok(data.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
 }
@@ -175,41 +310,45 @@ where
     ) -> Poll<io::Result<()>> {
         let this = self.get_mut();
 
-        // Try to get lock on KCP
-        let mut kcp = match this.kcp.try_lock() {
-            Ok(guard) => guard,
-            Err(_) => {
-                cx.waker().wake_by_ref();
-                return Poll::Pending;
-            }
-        };
+        // If we have partial data from previous read, use it first
+        if this.partial_pos < this.partial_buf.len() {
+            let remaining = this.partial_buf.len() - this.partial_pos;
+            let to_copy = std::cmp::min(buf.remaining(), remaining);
+            buf.put_slice(&this.partial_buf[this.partial_pos..this.partial_pos + to_copy]);
+            this.partial_pos += to_copy;
 
-        // Check if KCP has data available
-        let peek_size = kcp.peeksize().unwrap_or(0);
-
-        if peek_size > 0 {
-            // Read from KCP into buffer
-            let mut temp_buf = vec![0u8; buf.remaining()];
-            match kcp.recv(&mut temp_buf) {
-                Ok(n) => {
-                    buf.put_slice(&temp_buf[..n]);
-                    return Poll::Ready(Ok(()));
-                }
-                Err(kcp::Error::RecvQueueEmpty) => {
-                    // No data yet, need to wait
-                }
-                Err(e) => {
-                    return Poll::Ready(Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!("KCP recv error: {:?}", e),
-                    )));
-                }
+            // Clear partial buffer if fully consumed
+            if this.partial_pos >= this.partial_buf.len() {
+                this.partial_buf.clear();
+                this.partial_pos = 0;
             }
+
+            return Poll::Ready(Ok(()));
         }
 
-        // No data available, return pending
-        cx.waker().wake_by_ref();
-        Poll::Pending
+        // Try to receive new data from channel (with built-in waker support)
+        match this.read_rx.poll_recv(cx) {
+            Poll::Ready(Some(data)) => {
+                let to_copy = std::cmp::min(buf.remaining(), data.len());
+                buf.put_slice(&data[..to_copy]);
+
+                // If we couldn't copy all data, store remainder for next read
+                if to_copy < data.len() {
+                    this.partial_buf = data;
+                    this.partial_pos = to_copy;
+                }
+
+                Poll::Ready(Ok(()))
+            }
+            Poll::Ready(None) => {
+                // Channel closed - EOF
+                Poll::Ready(Ok(()))
+            }
+            Poll::Pending => {
+                // No data available yet - waker already registered by poll_recv
+                Poll::Pending
+            }
+        }
     }
 }
 
@@ -236,13 +375,25 @@ where
         };
 
         // Send through KCP
-        match kcp.send(buf) {
-            Ok(n) => Poll::Ready(Ok(n)),
-            Err(e) => Poll::Ready(Err(io::Error::new(
+        let result = match kcp.send(buf) {
+            Ok(n) => n,
+            Err(e) => {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("KCP send error: {:?}", e),
+                )));
+            }
+        };
+
+        // Flush immediately to trigger output callback
+        if let Err(e) = kcp.flush() {
+            return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::Other,
-                format!("KCP send error: {:?}", e),
-            ))),
+                format!("KCP flush after send error: {:?}", e),
+            )));
         }
+
+        Poll::Ready(Ok(result))
     }
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {

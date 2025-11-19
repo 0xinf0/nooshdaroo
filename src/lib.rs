@@ -71,6 +71,7 @@ pub mod config;
 pub mod dns_transport;
 pub mod dns_tunnel;
 pub mod dns_udp_tunnel;
+pub mod reliable_transport;
 pub mod embedded_keys;
 pub mod json_logger;
 pub mod library;

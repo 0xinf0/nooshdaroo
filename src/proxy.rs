@@ -24,6 +24,7 @@ use std::mem;
 enum ServerStream {
     Tcp(TcpStream),
     Dns(DnsStream),
+    DnsWithKcp(crate::reliable_transport::ReliableTransport<DnsStream>),
 }
 
 impl tokio::io::AsyncRead for ServerStream {
@@ -35,6 +36,7 @@ impl tokio::io::AsyncRead for ServerStream {
         match &mut *self {
             ServerStream::Tcp(stream) => Pin::new(stream).poll_read(cx, buf),
             ServerStream::Dns(stream) => Pin::new(stream).poll_read(cx, buf),
+            ServerStream::DnsWithKcp(stream) => Pin::new(stream).poll_read(cx, buf),
         }
     }
 }
@@ -48,6 +50,7 @@ impl tokio::io::AsyncWrite for ServerStream {
         match &mut *self {
             ServerStream::Tcp(stream) => Pin::new(stream).poll_write(cx, buf),
             ServerStream::Dns(stream) => Pin::new(stream).poll_write(cx, buf),
+            ServerStream::DnsWithKcp(stream) => Pin::new(stream).poll_write(cx, buf),
         }
     }
 
@@ -55,6 +58,7 @@ impl tokio::io::AsyncWrite for ServerStream {
         match &mut *self {
             ServerStream::Tcp(stream) => Pin::new(stream).poll_flush(cx),
             ServerStream::Dns(stream) => Pin::new(stream).poll_flush(cx),
+            ServerStream::DnsWithKcp(stream) => Pin::new(stream).poll_flush(cx),
         }
     }
 
@@ -62,6 +66,7 @@ impl tokio::io::AsyncWrite for ServerStream {
         match &mut *self {
             ServerStream::Tcp(stream) => Pin::new(stream).poll_shutdown(cx),
             ServerStream::Dns(stream) => Pin::new(stream).poll_shutdown(cx),
+            ServerStream::DnsWithKcp(stream) => Pin::new(stream).poll_shutdown(cx),
         }
     }
 }
@@ -294,7 +299,26 @@ async fn handle_socks5(
                     match DnsTransportClient::connect(server_addr).await {
                         Ok(dns_client) => {
                             log::info!("DNS UDP tunnel connected to {}", server_addr);
-                            ServerStream::Dns(DnsStream::new(dns_client))
+
+                            // Wrap DNS stream with KCP reliability layer
+                            let dns_stream = DnsStream::new(dns_client);
+                            let session_id = rand::random::<u32>();
+
+                            match crate::reliable_transport::ReliableTransport::new(
+                                dns_stream,
+                                session_id,
+                                600  // MTU matching DNS fragment size
+                            ) {
+                                Ok(kcp_stream) => {
+                                    log::info!("KCP reliability layer initialized (session_id: {})", session_id);
+                                    ServerStream::DnsWithKcp(kcp_stream)
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to initialize KCP: {}", e);
+                                    send_reply(&mut socket, ReplyCode::GeneralFailure, &target).await?;
+                                    return Err(e.into());
+                                }
+                            }
                         }
                         Err(e) => {
                             log::error!("Failed to connect DNS tunnel to {}: {}", server_addr, e);
@@ -1024,12 +1048,31 @@ async fn handle_dns_query(
                 &payload[..payload.len().min(4)]
             );
 
-            let mut virtual_stream = DnsVirtualStream::new(
+            let virtual_stream = DnsVirtualStream::new(
                 Arc::clone(&dns_server),
                 client_addr,
                 tx_id,
                 payload.clone(),
             );
+
+            // Wrap with KCP reliability layer
+            let session_id = (client_addr.port() as u32) ^ (tx_id as u32);  // Derive session ID from client addr/tx
+            let mut kcp_stream = match crate::reliable_transport::ReliableTransport::new(
+                virtual_stream,
+                session_id,
+                600  // MTU matching DNS fragment size
+            ) {
+                Ok(stream) => {
+                    log::info!("Server-side KCP reliability layer initialized (session_id: {})", session_id);
+                    stream
+                }
+                Err(e) => {
+                    log::error!("Failed to initialize server-side KCP: {}", e);
+                    drop(sessions_guard);
+                    dns_server.send_response(b"KCP_INIT_ERROR", client_addr, tx_id).await?;
+                    return Err(e.into());
+                }
+            };
 
             // NOTE: Do NOT use protocol wrapper here!
             // The DNS format parsing (parse_dns_query) already extracts the payload,
@@ -1037,7 +1080,7 @@ async fn handle_dns_query(
             // Using a protocol wrapper here would cause double-unwrapping and corrupt the data.
 
             // Perform server-side Noise handshake WITHOUT protocol wrapper
-            match NoiseTransport::server_handshake(&mut virtual_stream, noise_cfg, None).await {
+            match NoiseTransport::server_handshake(&mut kcp_stream, noise_cfg, None).await {
                 Ok(transport) => {
                     log::info!("Noise handshake completed for {}", client_addr);
                     session.noise_transport = Some(Arc::new(Mutex::new(transport)));
