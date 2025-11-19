@@ -36,12 +36,14 @@ use tokio::time::{Duration, Instant};
 ///
 /// Provides AsyncRead/AsyncWrite interface over unreliable transport
 pub struct ReliableTransport<T> {
+    /// Underlying unreliable transport
+    transport: Arc<Mutex<T>>,
     /// KCP protocol state
-    kcp: Arc<Mutex<Kcp<KcpOutput<T>>>>,
+    kcp: Arc<Mutex<Kcp<KcpOutput>>>,
     /// Channel receiver for decoded data from KCP
     read_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
-    /// Channel sender for decoded data (used by background task)
-    _read_tx: Arc<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
+    /// Buffer for KCP output packets
+    write_buf: Arc<Mutex<VecDeque<Vec<u8>>>>,
     /// Last update time
     last_update: Arc<Mutex<Instant>>,
     /// Buffer for partially read data
@@ -49,9 +51,8 @@ pub struct ReliableTransport<T> {
     partial_pos: usize,
 }
 
-/// Output callback for KCP - sends packets to underlying transport
-struct KcpOutput<T> {
-    transport: Arc<Mutex<T>>,
+/// Output callback for KCP - sends packets to a buffer
+struct KcpOutput {
     write_buf: Arc<Mutex<VecDeque<Vec<u8>>>>,
 }
 
@@ -71,7 +72,6 @@ where
         let write_buf = Arc::new(Mutex::new(VecDeque::new()));
 
         let output = KcpOutput {
-            transport: Arc::clone(&transport),
             write_buf: Arc::clone(&write_buf),
         };
 
@@ -113,37 +113,6 @@ where
 
                 kcp_guard.update(elapsed.as_millis() as u32).ok();
                 *last_update_clone.lock().await = current;
-            }
-        });
-
-        // Start write task - send buffered KCP output to underlying transport
-        let transport_write = Arc::clone(&transport);
-        let write_buf_task = Arc::clone(&write_buf);
-        tokio::spawn(async move {
-            use tokio::io::AsyncWriteExt;
-
-            loop {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-
-                // Check if there's data to write
-                let packet = {
-                    let mut buf = write_buf_task.lock().await;
-                    buf.pop_front()
-                };
-
-                if let Some(data) = packet {
-                    log::debug!("Write task: dequeued {} bytes, writing to transport", data.len());
-                    // Write to underlying transport
-                    let mut transport = transport_write.lock().await;
-                    if let Err(e) = transport.write_all(&data).await {
-                        log::error!("Failed to write KCP output to transport: {}", e);
-                    } else {
-                        log::debug!("Write task: successfully wrote to transport");
-                    }
-                    if let Err(e) = transport.flush().await {
-                        log::error!("Failed to flush transport: {}", e);
-                    }
-                }
             }
         });
 
@@ -225,9 +194,10 @@ where
         });
 
         Ok(Self {
+            transport,
             kcp,
             read_rx,
-            _read_tx: read_tx,
+            write_buf,
             last_update,
             partial_buf: Vec::new(),
             partial_pos: 0,
@@ -270,10 +240,7 @@ where
     }
 }
 
-impl<T> std::io::Write for KcpOutput<T>
-where
-    T: AsyncWrite + Unpin + Send,
-{
+impl std::io::Write for KcpOutput {
     fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
         // Queue packet to write buffer - will be written by async task
         log::debug!("KCP output callback: writing {} bytes to write_buf", data.len());
@@ -358,7 +325,7 @@ where
 {
     fn poll_write(
         self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
+        cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
@@ -367,10 +334,8 @@ where
         let mut kcp = match this.kcp.try_lock() {
             Ok(guard) => guard,
             Err(_) => {
-                return Poll::Ready(Err(io::Error::new(
-                    io::ErrorKind::WouldBlock,
-                    "KCP lock busy",
-                )));
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
             }
         };
 
@@ -385,7 +350,7 @@ where
             }
         };
 
-        // Flush immediately to trigger output callback
+        // Flush immediately to trigger output callback, which populates write_buf
         if let Err(e) = kcp.flush() {
             return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::Other,
@@ -393,36 +358,71 @@ where
             )));
         }
 
-        Poll::Ready(Ok(result))
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        let this = self.get_mut();
-
-        // Try to get lock on KCP
-        let mut kcp = match this.kcp.try_lock() {
+        // Try to drain the write buffer and write to the transport
+        // This is the core of the deadlock fix: we write directly here
+        // instead of in a separate task.
+        let mut transport = match this.transport.try_lock() {
             Ok(guard) => guard,
             Err(_) => {
-                return Poll::Ready(Err(io::Error::new(
-                    io::ErrorKind::WouldBlock,
-                    "KCP lock busy",
-                )));
+                // If we can't get the transport lock, it's likely held by the read task.
+                // We must return Pending and let the runtime poll us again later.
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
             }
         };
 
-        // Flush KCP buffers
-        match kcp.flush() {
-            Ok(_) => Poll::Ready(Ok(())),
-            Err(e) => Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("KCP flush error: {:?}", e),
-            ))),
+        let mut write_buf = match this.write_buf.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                // This should be rare, but if the KCP output callback is somehow
+                // running concurrently, we might not get the lock.
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+        };
+
+        while let Some(packet) = write_buf.pop_front() {
+            if let Poll::Ready(Err(e)) = Pin::new(&mut *transport).poll_write(cx, &packet) {
+                // If write fails (e.g., WouldBlock), re-queue the packet and return
+                write_buf.push_front(packet);
+                return Poll::Ready(Err(e));
+            }
         }
+
+        Poll::Ready(Ok(result))
     }
 
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        // KCP doesn't have explicit shutdown
-        Poll::Ready(Ok(()))
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+
+        let mut transport = match this.transport.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+        };
+
+        Pin::new(&mut *transport).poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+
+        // Try to flush any remaining data before shutting down
+        if let Poll::Pending = Pin::new(&mut *this).poll_flush(cx) {
+            return Poll::Pending;
+        }
+
+        let mut transport = match this.transport.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+        };
+        
+        Pin::new(&mut *transport).poll_shutdown(cx)
     }
 }
 
