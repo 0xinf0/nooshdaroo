@@ -214,6 +214,7 @@ pub struct DnsStream {
     client: Arc<DnsTransportClient>,
     read_buf: Arc<Mutex<Vec<u8>>>,
     write_buf: Arc<Mutex<Vec<u8>>>,
+    receiving: Arc<Mutex<bool>>,  // Track if receive task is in progress
 }
 
 impl DnsStream {
@@ -223,6 +224,7 @@ impl DnsStream {
             client: Arc::new(client),
             read_buf: Arc::new(Mutex::new(Vec::new())),
             write_buf: Arc::new(Mutex::new(Vec::new())),
+            receiving: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -257,21 +259,65 @@ impl AsyncRead for DnsStream {
             return Poll::Ready(Ok(()));
         }
 
-        // Try to receive more data via DNS
+        // Check if a receive is already in progress
+        let receiving = Arc::clone(&self.receiving);
+        let mut receiving_guard = match receiving.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                // Already receiving, just wait (spawned task will wake us)
+                return Poll::Pending;
+            }
+        };
+
+        if *receiving_guard {
+            // Already receiving, just wait (spawned task will wake us)
+            return Poll::Pending;
+        }
+
+        // Mark that we're starting a receive
+        *receiving_guard = true;
+        drop(receiving_guard);
+
+        // Spawn ONE task to receive data via DNS
         let waker = cx.waker().clone();
         let read_buf_clone = Arc::clone(&read_buf);
+        let receiving_clone = Arc::clone(&receiving);
 
         tokio::spawn(async move {
-            match client.receive().await {
-                Ok(data) => {
-                    let mut buf = read_buf_clone.lock().await;
-                    buf.extend_from_slice(&data);
-                    waker.wake();
-                }
-                Err(_) => {
-                    waker.wake();
+            // Try to receive multiple fragments with timeout
+            // Keep receiving until timeout (no more fragments available)
+            let mut fragments = Vec::new();
+
+            loop {
+                match tokio::time::timeout(
+                    tokio::time::Duration::from_millis(50),  // Increased timeout for fragmented messages
+                    client.receive()
+                ).await {
+                    Ok(Ok(data)) => {
+                        fragments.push(data);
+                    }
+                    Ok(Err(_)) => {
+                        // Receive error
+                        break;
+                    }
+                    Err(_) => {
+                        // Timeout - no more fragments available
+                        break;
+                    }
                 }
             }
+
+            // Reassemble fragments into buffer
+            if !fragments.is_empty() {
+                let mut buf = read_buf_clone.lock().await;
+                for fragment in fragments {
+                    buf.extend_from_slice(&fragment);
+                }
+            }
+
+            // Mark receive as complete
+            *receiving_clone.lock().await = false;
+            waker.wake();
         });
 
         Poll::Pending
@@ -284,7 +330,6 @@ impl AsyncWrite for DnsStream {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        let client = Arc::clone(&self.client);
         let write_buf = Arc::clone(&self.write_buf);
 
         let mut write_buf_guard = match write_buf.try_lock() {
@@ -295,21 +340,9 @@ impl AsyncWrite for DnsStream {
             }
         };
 
-        // Buffer the data
+        // Just buffer the data - don't send until flush
         write_buf_guard.extend_from_slice(buf);
         let len = buf.len();
-
-        // If we have enough data, send via DNS
-        if write_buf_guard.len() >= 100 {  // Min chunk size
-            let data_to_send = write_buf_guard.clone();
-            write_buf_guard.clear();
-
-            let waker = cx.waker().clone();
-            tokio::spawn(async move {
-                let _ = client.send(&data_to_send).await;
-                waker.wake();
-            });
-        }
 
         Poll::Ready(Ok(len))
     }
@@ -335,7 +368,25 @@ impl AsyncWrite for DnsStream {
 
         let waker = cx.waker().clone();
         tokio::spawn(async move {
-            let _ = client.send(&data_to_send).await;
+            // Fragment large payloads to fit in DNS packets
+            // Based on DNSTT: 1232 bytes is safe for most resolvers (RFC 6891 EDNS0)
+            // DNS encoding adds ~2x overhead, so limit payload to 600 bytes
+            const MAX_CHUNK_SIZE: usize = 600;
+
+            if data_to_send.len() <= MAX_CHUNK_SIZE {
+                // Small enough, send as single packet
+                let _ = client.send(&data_to_send).await;
+            } else {
+                // Need to fragment - send in chunks
+                for chunk in data_to_send.chunks(MAX_CHUNK_SIZE) {
+                    if let Err(e) = client.send(chunk).await {
+                        log::error!("Failed to send DNS fragment: {}", e);
+                        break;
+                    }
+                    // Small delay between fragments to avoid overwhelming receiver
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+                }
+            }
             waker.wake();
         });
 

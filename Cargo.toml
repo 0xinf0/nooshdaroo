@@ -70,6 +70,9 @@ snow = "0.9"
 base64 = "0.22"
 hex = "0.4"
 
+# KCP reliability layer for DNS/ICMP transports
+kcp = "0.6"
+
 # QUIC transport
 quinn = "0.11"
 rustls = "0.23"

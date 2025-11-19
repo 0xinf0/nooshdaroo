@@ -575,6 +575,7 @@ async fn relay_dns_tunnel(
     let mut client_buf = vec![0u8; 8192];
     let mut client_closed = false;
     let mut server_closed = false;
+    let mut poll_interval = tokio::time::interval(tokio::time::Duration::from_millis(50));
 
     loop {
         tokio::select! {
@@ -623,6 +624,14 @@ async fn relay_dns_tunnel(
                             break;
                         }
                     }
+                }
+            }
+            // DNS polling: periodically send empty requests to trigger server responses
+            _ = poll_interval.tick(), if !server_closed && !client_closed => {
+                // Send empty encrypted message to poll for server data
+                if let Err(e) = noise.write_raw(&mut server, b"").await {
+                    log::debug!("DNS poll write error: {}", e);
+                    server_closed = true;
                 }
             }
         }
@@ -895,7 +904,7 @@ async fn handle_http_connection(
 /// Session state for each DNS client
 struct DnsSession {
     last_seen: std::time::Instant,
-    noise_transport: Option<NoiseTransport>,
+    noise_transport: Option<Arc<Mutex<NoiseTransport>>>,  // Serialize Noise operations
     target_conn: Option<TcpStream>,
     pending_response: Vec<u8>,
     handshake_complete: bool,
@@ -1009,6 +1018,12 @@ async fn handle_dns_query(
 
             // Create virtual stream from DNS transport
             // We'll use a memory buffer to simulate a bidirectional stream for the handshake
+            log::debug!(
+                "Creating DnsVirtualStream for handshake: payload_len={}, first_4_bytes={:02x?}",
+                payload.len(),
+                &payload[..payload.len().min(4)]
+            );
+
             let mut virtual_stream = DnsVirtualStream::new(
                 Arc::clone(&dns_server),
                 client_addr,
@@ -1025,7 +1040,7 @@ async fn handle_dns_query(
             match NoiseTransport::server_handshake(&mut virtual_stream, noise_cfg, None).await {
                 Ok(transport) => {
                     log::info!("Noise handshake completed for {}", client_addr);
-                    session.noise_transport = Some(transport);
+                    session.noise_transport = Some(Arc::new(Mutex::new(transport)));
                     session.handshake_complete = true;
 
                     // Handshake generates responses - they're already sent by virtual_stream
@@ -1051,7 +1066,12 @@ async fn handle_dns_query(
     }
 
     // At this point, we have an established Noise session
-    let noise_transport = session.noise_transport.as_mut().unwrap();
+    // Clone the Arc to release the sessions lock while we do crypto
+    let noise_transport_arc = Arc::clone(session.noise_transport.as_ref().unwrap());
+    drop(sessions_guard);  // Release session lock early to avoid holding it during crypto
+
+    // Lock the Noise transport to serialize decrypt/encrypt operations
+    let mut noise_transport = noise_transport_arc.lock().await;
 
     // Decrypt the payload
     let decrypted = match noise_transport.decrypt(&payload) {
@@ -1066,7 +1086,7 @@ async fn handle_dns_query(
         }
         Err(e) => {
             log::error!("Failed to decrypt DNS payload from {}: {}", client_addr, e);
-            drop(sessions_guard);
+            drop(noise_transport);  // Release Noise lock
 
             // Send error response
             let error_encrypted = vec![0xFF]; // Error marker
@@ -1077,8 +1097,14 @@ async fn handle_dns_query(
         }
     };
 
+    // Re-acquire session lock to check/update target_conn
+    let mut sessions_guard = sessions.lock().await;
+    let session = sessions_guard.get_mut(&client_addr).unwrap();
+
     // Check if this is the initial target connection request
     if session.target_conn.is_none() {
+        drop(sessions_guard);  // Release before async operations
+
         // Parse target address (format: "host:port" or "[ipv6]:port")
         let target_str = String::from_utf8_lossy(&decrypted);
         log::info!("DNS tunnel connection request from {}: target={}", client_addr, target_str);
@@ -1095,12 +1121,17 @@ async fn handle_dns_query(
                     target_addr,
                     client_addr
                 );
+
+                // Store connection in session
+                let mut sessions_guard = sessions.lock().await;
+                let session = sessions_guard.get_mut(&client_addr).unwrap();
                 session.target_conn = Some(stream);
+                drop(sessions_guard);
 
                 // Send success response
                 let success_msg = b"OK";
                 let encrypted = noise_transport.encrypt(success_msg)?;
-                drop(sessions_guard); // Release lock before async operation
+                drop(noise_transport);  // Release Noise lock before async operation
 
                 dns_server
                     .send_response(&encrypted, client_addr, tx_id)
@@ -1119,7 +1150,7 @@ async fn handle_dns_query(
                 // Send error response
                 let error_msg = format!("CONNECTION_FAILED: {}", e);
                 let encrypted = noise_transport.encrypt(error_msg.as_bytes())?;
-                drop(sessions_guard);
+                drop(noise_transport);
 
                 dns_server
                     .send_response(&encrypted, client_addr, tx_id)
@@ -1156,7 +1187,7 @@ async fn handle_dns_query(
         // Read response from target (non-blocking with timeout)
         let mut response_buf = vec![0u8; 8192];
         let response_data = match tokio::time::timeout(
-            Duration::from_millis(100),
+            Duration::from_millis(5000),  // Increased timeout for slow TLS handshakes
             target_conn.read(&mut response_buf)
         )
         .await
@@ -1165,38 +1196,44 @@ async fn handle_dns_query(
                 log::info!("Target closed connection for {}", client_addr);
                 // Connection closed
                 session.target_conn = None;
-                b"CONNECTION_CLOSED"
+                Some(b"CONNECTION_CLOSED" as &[u8])
             }
             Ok(Ok(n)) => {
                 log::debug!("Read {} bytes from target for {}", n, client_addr);
-                &response_buf[..n]
+                Some(&response_buf[..n])
             }
             Ok(Err(e)) => {
                 log::error!("Error reading from target for {}: {}", client_addr, e);
                 session.target_conn = None;
-                b"TARGET_READ_ERROR"
+                Some(b"TARGET_READ_ERROR" as &[u8])
             }
             Err(_) => {
                 // Timeout - no data available yet
-                // Send empty response to acknowledge receipt
-                b""
+                // Don't send a response - wait for actual data
+                log::debug!("No data from target yet for {}, not sending response", client_addr);
+                None
             }
         };
 
-        // Encrypt and send response
-        let encrypted = noise_transport.encrypt(response_data)?;
-        drop(sessions_guard);
+        // Only send response if we have data
+        if let Some(data) = response_data {
+            // Encrypt and send response
+            let encrypted = noise_transport.encrypt(data)?;
+            drop(sessions_guard);
 
-        dns_server
-            .send_response(&encrypted, client_addr, tx_id)
-            .await?;
+            dns_server
+                .send_response(&encrypted, client_addr, tx_id)
+                .await?;
 
-        log::debug!(
-            "Sent {} bytes response to {} (encrypted: {} bytes)",
-            response_data.len(),
-            client_addr,
-            encrypted.len()
-        );
+            log::debug!(
+                "Sent {} bytes response to {} (encrypted: {} bytes)",
+                data.len(),
+                client_addr,
+                encrypted.len()
+            );
+        } else {
+            drop(sessions_guard);
+        }
     }
 
     Ok(())
@@ -1241,6 +1278,7 @@ impl DnsVirtualStream {
         tx_id: u16,
         initial_data: Vec<u8>,
     ) -> Self {
+        // DNS packets are self-delimiting, pass Noise messages through unchanged
         Self {
             dns_server,
             client_addr,
@@ -1258,18 +1296,17 @@ impl AsyncRead for DnsVirtualStream {
         _cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        // Read from buffered data
+        // Read directly from buffer - DNS packets are self-delimiting
         if self.read_pos < self.read_buffer.len() {
             let remaining = &self.read_buffer[self.read_pos..];
             let to_copy = std::cmp::min(buf.remaining(), remaining.len());
             buf.put_slice(&remaining[..to_copy]);
             self.read_pos += to_copy;
-            Poll::Ready(Ok(()))
-        } else {
-            // No more data available - for handshake, this means we need to wait for next packet
-            // In a real implementation, this would block until the next DNS packet arrives
-            Poll::Ready(Ok(())) // Return EOF for now
+            return Poll::Ready(Ok(()));
         }
+
+        // All data consumed - return EOF
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -1280,12 +1317,13 @@ impl AsyncWrite for DnsVirtualStream {
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
         // Buffer writes - they'll be sent when flush is called
+        // Noise will send length-prefixed messages, we need to strip the prefix for DNS
         self.pending_writes.push(buf.to_vec());
         Poll::Ready(Ok(buf.len()))
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        // Send all pending writes as DNS responses
+        // Send all pending writes as DNS response(s), fragmenting if needed
         if !self.pending_writes.is_empty() {
             let dns_server = Arc::clone(&self.dns_server);
             let client_addr = self.client_addr;
@@ -1294,9 +1332,31 @@ impl AsyncWrite for DnsVirtualStream {
 
             let waker = cx.waker().clone();
             tokio::spawn(async move {
+                // Concatenate all pending writes into one buffer
+                let mut combined = Vec::new();
                 for data in writes {
-                    if let Err(e) = dns_server.send_response(&data, client_addr, tx_id).await {
-                        log::error!("Failed to send DNS handshake response: {}", e);
+                    combined.extend_from_slice(&data);
+                }
+
+                // Fragment large payloads to fit in DNS packets
+                // Based on DNSTT: 1232 bytes is safe for most resolvers (RFC 6891 EDNS0)
+                // DNS encoding adds ~2x overhead, so limit payload to 600 bytes
+                const MAX_CHUNK_SIZE: usize = 600;
+
+                if combined.len() <= MAX_CHUNK_SIZE {
+                    // Small enough, send as single packet
+                    if let Err(e) = dns_server.send_response(&combined, client_addr, tx_id).await {
+                        log::error!("Failed to send DNS response: {}", e);
+                    }
+                } else {
+                    // Need to fragment - send in chunks
+                    for chunk in combined.chunks(MAX_CHUNK_SIZE) {
+                        if let Err(e) = dns_server.send_response(chunk, client_addr, tx_id).await {
+                            log::error!("Failed to send DNS fragment: {}", e);
+                            break;
+                        }
+                        // Small delay between fragments
+                        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
                     }
                 }
                 waker.wake();
