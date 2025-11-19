@@ -61,6 +61,11 @@ impl DnsTransportClient {
         .parse()?;
 
         let socket = UdpSocket::bind(local_addr).await?;
+
+        // Connect the UDP socket to server (like WireGuard) for NAT traversal
+        // This creates a "connected" UDP socket that NAT routers handle bidirectionally
+        socket.connect(server_addr).await?;
+
         let session_id = rand::random::<u16>();
 
         log::info!(
@@ -88,18 +93,18 @@ impl DnsTransportClient {
             dns_query.len()
         );
 
-        // Send UDP packet
-        self.socket.send_to(&dns_query, self.server_addr).await?;
+        // Send UDP packet (using send() not send_to() since socket is connected)
+        self.socket.send(&dns_query).await?;
 
         Ok(())
     }
 
     /// Receive data from DNS tunnel
     pub async fn receive(&self) -> Result<Vec<u8>> {
-        // Wait for DNS response
+        // Wait for DNS response (using recv() not recv_from() since socket is connected)
         let mut buf = vec![0u8; 4096];
 
-        let (n, _src) = timeout(Duration::from_secs(10), self.socket.recv_from(&mut buf))
+        let n = timeout(Duration::from_secs(10), self.socket.recv(&mut buf))
             .await
             .map_err(|_| anyhow!("DNS receive timeout"))?
             .map_err(|e| anyhow!("DNS receive error: {}", e))?;
