@@ -10,20 +10,29 @@ const MAX_LABEL_LEN: usize = 63;
 /// Maximum total QNAME length
 const MAX_QNAME_LEN: usize = 253;
 
-/// Base domain for tunnel queries
-const TUNNEL_DOMAIN: &str = "tunnel.example.com";
+/// Base domains for tunnel queries (rotated for variety)
+/// Using top domains from 1.1.1.1 DNS traffic in Iran
+const TUNNEL_DOMAINS: &[&str] = &[
+    "api.gstatic.com",
+    "update.googleapis.com",
+];
+
+/// Get a tunnel domain (rotates based on transaction ID for variety)
+fn get_tunnel_domain(transaction_id: u16) -> &'static str {
+    TUNNEL_DOMAINS[(transaction_id as usize) % TUNNEL_DOMAINS.len()]
+}
 
 /// Encode payload data into a valid DNS QNAME
 ///
 /// Takes encrypted data and encodes it as hex in subdomain labels:
 /// Input: [0xab, 0x3d, 0x01, 0xf7, 0xc9, 0xe2]
-/// Output: \x06ab3d01\x06f7c9e2\x06tunnel\x07example\x03com\x00
+/// Output: \x06ab3d01\x06f7c9e2\x06challenges\x10cloudflare\x03com\x00
 ///
 /// Each label is:
 /// - Length byte (1-63)
 /// - Data bytes (hex encoded payload chunk)
 /// - Terminated with \x00
-pub fn encode_qname(payload: &[u8]) -> Vec<u8> {
+pub fn encode_qname(payload: &[u8], transaction_id: u16) -> Vec<u8> {
     let mut qname = Vec::new();
 
     // Hex encode the payload
@@ -42,8 +51,9 @@ pub fn encode_qname(payload: &[u8]) -> Vec<u8> {
         qname.extend_from_slice(chunk.as_bytes());
     }
 
-    // Append base domain: tunnel.example.com
-    for part in TUNNEL_DOMAIN.split('.') {
+    // Append base domain (cdn-api.services.net or update.akamaiedge.net)
+    let tunnel_domain = get_tunnel_domain(transaction_id);
+    for part in tunnel_domain.split('.') {
         qname.push(part.len() as u8);
         qname.extend_from_slice(part.as_bytes());
     }
@@ -77,8 +87,9 @@ pub fn decode_qname(qname: &[u8]) -> Result<Vec<u8>, String> {
         let label_str = std::str::from_utf8(label)
             .map_err(|e| format!("Invalid UTF-8 in label: {}", e))?;
 
-        // Check if this is part of the base domain
-        if label_str == "tunnel" || label_str == "example" || label_str == "com" {
+        // Check if this is part of the base domain (api.gstatic.com or update.googleapis.com)
+        if label_str == "api" || label_str == "gstatic" || label_str == "com" ||
+           label_str == "update" || label_str == "googleapis" {
             break; // Reached base domain
         }
 
@@ -103,8 +114,8 @@ pub fn build_dns_query(payload: &[u8], transaction_id: u16) -> Vec<u8> {
     packet.extend_from_slice(&[0x00, 0x00]); // NSCOUNT: 0 authority
     packet.extend_from_slice(&[0x00, 0x00]); // ARCOUNT: 0 additional
 
-    // Question section
-    let qname = encode_qname(payload);
+    // Question section (use real domains: challenges.cloudflare.com or www.google.com)
+    let qname = encode_qname(payload, transaction_id);
     packet.extend_from_slice(&qname);
 
     // QTYPE: A record (0x0001)
@@ -150,8 +161,9 @@ pub fn build_dns_response(
         }
     } else {
         // If no query provided, create a minimal question section
-        // QNAME: tunnel.example.com (from TUNNEL_DOMAIN)
-        for part in TUNNEL_DOMAIN.split('.') {
+        // QNAME: cdn-api.services.net or update.akamaiedge.net
+        let tunnel_domain = get_tunnel_domain(transaction_id);
+        for part in tunnel_domain.split('.') {
             packet.push(part.len() as u8);
             packet.extend_from_slice(part.as_bytes());
         }

@@ -18,6 +18,7 @@ pub enum WrapperRole {
 // Embed all PSF files at compile time
 const DNS_PSF: &str = include_str!("../protocols/dns/dns.psf");
 const DNS_GOOGLE_PSF: &str = include_str!("../protocols/dns/dns_google_com.psf");
+const DNS_UDP_TUNNEL_PSF: &str = include_str!("../protocols/dns/dns-udp-tunnel.psf");
 const HTTPS_PSF: &str = include_str!("../protocols/http/https.psf");
 const HTTPS_GOOGLE_PSF: &str = include_str!("../protocols/http/https_google_com.psf");
 const TLS_SIMPLE_PSF: &str = include_str!("../protocols/http/tls_simple.psf");
@@ -51,6 +52,7 @@ fn get_psf_content(protocol: &str) -> Option<&'static str> {
         // DNS variants
         "dns" => Some(DNS_PSF),
         "dns-google" | "dns_google" | "dns-google-com" | "dns_google_com" => Some(DNS_GOOGLE_PSF),
+        "dns-udp-tunnel" | "dns_udp_tunnel" | "dnsudptunnel" => Some(DNS_UDP_TUNNEL_PSF),
 
         // SSH
         "ssh" => Some(SSH_PSF),

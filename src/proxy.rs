@@ -3,16 +3,68 @@
 use bytes::BytesMut;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::RwLock;
-use crate::noise_transport::NoiseTransport;
+use std::collections::HashMap;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
+use tokio::net::{TcpListener, TcpStream, UdpSocket};
+use tokio::sync::{RwLock, Mutex};
+use tokio::time::Duration;
+use crate::noise_transport::{NoiseTransport, NoiseConfig};
+use crate::config::NooshdarooConfig;
+use crate::dns_transport::{DnsTransportClient, DnsTransportServer, DnsStream};
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 #[cfg(target_os = "linux")]
 use std::os::unix::io::AsRawFd;
 
 #[cfg(target_os = "linux")]
 use std::mem;
+
+/// Server stream that can be either TCP or DNS tunnel
+enum ServerStream {
+    Tcp(TcpStream),
+    Dns(DnsStream),
+}
+
+impl tokio::io::AsyncRead for ServerStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        match &mut *self {
+            ServerStream::Tcp(stream) => Pin::new(stream).poll_read(cx, buf),
+            ServerStream::Dns(stream) => Pin::new(stream).poll_read(cx, buf),
+        }
+    }
+}
+
+impl tokio::io::AsyncWrite for ServerStream {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        match &mut *self {
+            ServerStream::Tcp(stream) => Pin::new(stream).poll_write(cx, buf),
+            ServerStream::Dns(stream) => Pin::new(stream).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match &mut *self {
+            ServerStream::Tcp(stream) => Pin::new(stream).poll_flush(cx),
+            ServerStream::Dns(stream) => Pin::new(stream).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match &mut *self {
+            ServerStream::Tcp(stream) => Pin::new(stream).poll_shutdown(cx),
+            ServerStream::Dns(stream) => Pin::new(stream).poll_shutdown(cx),
+        }
+    }
+}
 
 /// Proxy type enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,14 +117,38 @@ impl UnifiedProxyListener {
         self
     }
 
-    /// Start listening and accept connections
+    /// Start listening and accept connections (both TCP and UDP for dns-udp-tunnel)
     pub async fn listen(self) -> Result<(), Box<dyn std::error::Error>> {
+        // Check if we need UDP listener for DNS tunneling
+        let needs_udp = self.protocol_id.as_str() == "dns-udp-tunnel"
+            || self.protocol_id.as_str() == "dns_udp_tunnel"
+            || self.protocol_id.as_str() == "quic";
+
+        // Spawn UDP listener if needed (SERVER MODE ONLY)
+        // If server_addr is Some(), we're in CLIENT mode - don't start UDP server
+        // If server_addr is None, we're in SERVER mode - start UDP server
+        if needs_udp && self.server_addr.is_none() {
+            let udp_addr = self.listen_addr;
+            let noise_config = self.noise_config.clone();
+            let config = self.config.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = run_udp_dns_server(udp_addr, noise_config, config).await {
+                    log::error!("UDP DNS server error: {}", e);
+                }
+            });
+
+            log::info!("Nooshdaroo server listening on {} (TCP + UDP for DNS tunnel)", self.listen_addr);
+        } else {
+            log::info!("Nooshdaroo unified proxy listening on {} (TCP only)", self.listen_addr);
+        }
+
+        // Start TCP listener (always needed for backward compatibility)
         let listener = TcpListener::bind(self.listen_addr).await?;
-        log::info!("Nooshdaroo unified proxy listening on {}", self.listen_addr);
 
         loop {
             let (socket, peer_addr) = listener.accept().await?;
-            log::debug!("Accepted connection from {}", peer_addr);
+            log::debug!("Accepted TCP connection from {}", peer_addr);
 
             let proxy_types = self.proxy_types.clone();
             let server_addr = self.server_addr;
@@ -83,7 +159,7 @@ impl UnifiedProxyListener {
             let config = self.config.clone();
             tokio::spawn(async move {
                 if let Err(e) = handle_connection(socket, peer_addr, proxy_types, server_addr, noise_config, protocol_id, controller_clone, config).await {
-                    log::error!("Connection error from {}: {}", peer_addr, e);
+                    log::error!("TCP connection error from {}: {}", peer_addr, e);
                 }
             });
         }
@@ -210,27 +286,54 @@ async fn handle_socks5(
                 // TUNNEL MODE: Connect to server via Noise encryption
                 log::info!("Tunneling to {}:{} via server {}", target.host, target.port, server_addr);
 
-                // Connect to server
-                let mut server_stream = match TcpStream::connect(server_addr).await {
-                    Ok(stream) => {
-                        // Enable TCP_NODELAY for low latency (critical for HTTP/2)
-                        stream.set_nodelay(true)?;
-                        log::debug!("Connected to server {}", server_addr);
-                        stream
+                // Connect to server - use DNS tunnel if protocol is dns-udp-tunnel
+                let mut server_stream = if protocol_id.as_str() == "dns-udp-tunnel"
+                    || protocol_id.as_str() == "dns_udp_tunnel"
+                    || protocol_id.as_str() == "dnsudptunnel" {
+                    // DNS UDP Tunnel mode
+                    match DnsTransportClient::connect(server_addr).await {
+                        Ok(dns_client) => {
+                            log::info!("DNS UDP tunnel connected to {}", server_addr);
+                            ServerStream::Dns(DnsStream::new(dns_client))
+                        }
+                        Err(e) => {
+                            log::error!("Failed to connect DNS tunnel to {}: {}", server_addr, e);
+                            send_reply(&mut socket, ReplyCode::GeneralFailure, &target).await?;
+                            return Err(e.into());
+                        }
                     }
-                    Err(e) => {
-                        log::error!("Failed to connect to server {}: {}", server_addr, e);
-                        send_reply(&mut socket, ReplyCode::GeneralFailure, &target).await?;
-                        return Err(e.into());
+                } else {
+                    // TCP mode (HTTPS, HTTP, etc.)
+                    match TcpStream::connect(server_addr).await {
+                        Ok(stream) => {
+                            // Enable TCP_NODELAY for low latency (critical for HTTP/2)
+                            stream.set_nodelay(true)?;
+                            log::debug!("TCP connected to server {}", server_addr);
+                            ServerStream::Tcp(stream)
+                        }
+                        Err(e) => {
+                            log::error!("Failed to connect to server {}: {}", server_addr, e);
+                            send_reply(&mut socket, ReplyCode::GeneralFailure, &target).await?;
+                            return Err(e.into());
+                        }
                     }
                 };
 
                 // Create protocol wrapper for handshake wrapping
-                let mut protocol_wrapper = ProtocolWrapper::new(protocol_id.clone(), crate::WrapperRole::Client, None);
-                log::debug!("Using protocol: {}", protocol_id.as_str());
+                // NOTE: DNS protocol doesn't need wrapper - DNS format IS the protocol wrapping
+                let is_dns = protocol_id.as_str() == "dns-udp-tunnel"
+                    || protocol_id.as_str() == "dns_udp_tunnel"
+                    || protocol_id.as_str() == "dnsudptunnel";
 
-                // Perform Noise handshake with protocol wrapping
-                let (mut noise_transport, use_tls_emulation) = match NoiseTransport::client_handshake(&mut server_stream, &noise_config, Some(&mut protocol_wrapper)).await {
+                let mut protocol_wrapper = if !is_dns {
+                    Some(ProtocolWrapper::new(protocol_id.clone(), crate::WrapperRole::Client, None))
+                } else {
+                    None
+                };
+                log::debug!("Using protocol: {} (wrapper: {})", protocol_id.as_str(), protocol_wrapper.is_some());
+
+                // Perform Noise handshake with protocol wrapping (if applicable)
+                let (mut noise_transport, use_tls_emulation) = match NoiseTransport::client_handshake(&mut server_stream, &noise_config, protocol_wrapper.as_mut()).await {
                     Ok(mut transport) => {
                         log::debug!("Noise handshake completed with server using {}", protocol_id.as_str());
 
@@ -265,7 +368,13 @@ async fn handle_socks5(
                     // IPv4 or hostname
                     format!("{}:{}", target.host, target.port)
                 };
-                match noise_transport.write(&mut server_stream, target_info.as_bytes()).await {
+                // Use write_raw() for DNS (no length prefix needed for UDP)
+                let write_result = if is_dns {
+                    noise_transport.write_raw(&mut server_stream, target_info.as_bytes()).await
+                } else {
+                    noise_transport.write(&mut server_stream, target_info.as_bytes()).await
+                };
+                match write_result {
                     Ok(_) => {
                         log::debug!("Sent target info to server: {}", target_info);
                     }
@@ -277,12 +386,24 @@ async fn handle_socks5(
                 }
 
                 // Wait for server's connection confirmation
-                let response = match noise_transport.read(&mut server_stream).await {
-                    Ok(data) => data,
-                    Err(e) => {
-                        log::error!("Failed to receive server response: {}", e);
-                        send_reply(&mut socket, ReplyCode::GeneralFailure, &target).await?;
-                        return Err(e.into());
+                // Use read_raw() for DNS (no length prefix), read() for TCP
+                let response = if is_dns {
+                    match noise_transport.read_raw(&mut server_stream).await {
+                        Ok(data) => data,
+                        Err(e) => {
+                            log::error!("Failed to receive server response (DNS): {}", e);
+                            send_reply(&mut socket, ReplyCode::GeneralFailure, &target).await?;
+                            return Err(e.into());
+                        }
+                    }
+                } else {
+                    match noise_transport.read(&mut server_stream).await {
+                        Ok(data) => data,
+                        Err(e) => {
+                            log::error!("Failed to receive server response: {}", e);
+                            send_reply(&mut socket, ReplyCode::GeneralFailure, &target).await?;
+                            return Err(e.into());
+                        }
                     }
                 };
 
@@ -306,7 +427,17 @@ async fn handle_socks5(
 
                 // Relay data bidirectionally through encrypted tunnel
                 log::debug!("Starting encrypted relay for {}:{}", target.host, target.port);
-                if use_tls_emulation {
+
+                // DNS uses UDP (no length prefix), TLS emulation uses built-in wrapping
+                if is_dns {
+                    // Use DNS-specific relay (no length prefix for UDP)
+                    log::debug!("Using DNS transport layer (UDP, no length prefix)");
+                    if let Err(e) = relay_dns_tunnel(socket, server_stream, noise_transport).await {
+                        log::debug!("Tunnel relay ended for {}:{}: {}", target.host, target.port, e);
+                    } else {
+                        log::debug!("Tunnel relay completed successfully for {}:{}", target.host, target.port);
+                    }
+                } else if use_tls_emulation {
                     // Use NoiseTransport's built-in TLS wrapping (no protocol wrapper)
                     log::debug!("Using TLS session emulation (no protocol wrapper)");
                     if let Err(e) = relay_with_noise_only(socket, server_stream, noise_transport).await {
@@ -371,7 +502,7 @@ async fn handle_socks5(
 /// Relay using NoiseTransport only (for TLS session emulation)
 async fn relay_with_noise_only(
     mut client: impl AsyncReadExt + AsyncWriteExt + Unpin,
-    mut server: TcpStream,
+    mut server: impl AsyncReadExt + AsyncWriteExt + Unpin,
     mut noise: NoiseTransport,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut client_buf = vec![0u8; 8192];
@@ -435,9 +566,74 @@ async fn relay_with_noise_only(
     Ok(())
 }
 
+/// Relay function for DNS/UDP transports (no length-prefixed framing)
+async fn relay_dns_tunnel(
+    mut client: impl AsyncReadExt + AsyncWriteExt + Unpin,
+    mut server: impl AsyncReadExt + AsyncWriteExt + Unpin,
+    mut noise: NoiseTransport,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut client_buf = vec![0u8; 8192];
+    let mut client_closed = false;
+    let mut server_closed = false;
+
+    loop {
+        tokio::select! {
+            // Read from client, encrypt without length prefix, send to server
+            result = client.read(&mut client_buf), if !client_closed => {
+                match result {
+                    Ok(0) => {
+                        log::debug!("Client closed connection, shutting down server write");
+                        client_closed = true;
+                        if server_closed {
+                            break;
+                        }
+                    }
+                    Ok(n) => {
+                        // Use write_raw() for DNS - no length prefix
+                        noise.write_raw(&mut server, &client_buf[..n]).await?;
+                    }
+                    Err(e) => {
+                        log::debug!("Client read error: {}", e);
+                        client_closed = true;
+                        if server_closed {
+                            break;
+                        }
+                    }
+                }
+            }
+            // Read from server, decrypt without expecting length prefix, send to client
+            result = noise.read_raw(&mut server), if !server_closed => {
+                match result {
+                    Ok(data) if !data.is_empty() => {
+                        // read_raw() handles decryption without length prefix
+                        client.write_all(&data).await?;
+                        client.flush().await?;
+                    }
+                    Ok(_) => {
+                        log::debug!("Server closed connection");
+                        server_closed = true;
+                        if client_closed {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        log::debug!("Noise read error: {}", e);
+                        server_closed = true;
+                        if client_closed {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 async fn relay_through_noise_tunnel(
     mut client: impl AsyncReadExt + AsyncWriteExt + Unpin,
-    mut server: TcpStream,
+    mut server: impl AsyncReadExt + AsyncWriteExt + Unpin,
     mut noise: NoiseTransport,
     mut wrapper: crate::ProtocolWrapper,
     controller: Option<Arc<RwLock<crate::ShapeShiftController>>>,
@@ -694,6 +890,427 @@ async fn handle_http_connection(
     }
 
     Ok(())
+}
+
+/// Session state for each DNS client
+struct DnsSession {
+    last_seen: std::time::Instant,
+    noise_transport: Option<NoiseTransport>,
+    target_conn: Option<TcpStream>,
+    pending_response: Vec<u8>,
+    handshake_complete: bool,
+}
+
+/// UDP DNS server for dns-udp-tunnel protocol
+pub async fn run_udp_dns_server(
+    addr: SocketAddr,
+    noise_config: Option<NoiseConfig>,
+    config: Arc<NooshdarooConfig>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dns_server = Arc::new(DnsTransportServer::bind(addr).await?);
+    log::info!("UDP DNS server listening on {}", addr);
+
+    let sessions: Arc<Mutex<HashMap<SocketAddr, DnsSession>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+
+    // Spawn cleanup task
+    let sessions_cleanup = Arc::clone(&sessions);
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            let mut sessions = sessions_cleanup.lock().await;
+            let now = std::time::Instant::now();
+            sessions.retain(|addr, session| {
+                let keep = now.duration_since(session.last_seen) < Duration::from_secs(300);
+                if !keep {
+                    log::debug!("Cleaning up stale DNS session for {}", addr);
+                }
+                keep
+            });
+        }
+    });
+
+    // Main loop: receive and handle DNS queries
+    loop {
+        match dns_server.receive_query().await {
+            Ok((payload, client_addr, tx_id)) => {
+                log::debug!(
+                    "DNS query from {}: {} bytes, tx_id={}",
+                    client_addr,
+                    payload.len(),
+                    tx_id
+                );
+
+                let dns_server = Arc::clone(&dns_server);
+                let sessions = Arc::clone(&sessions);
+                let noise_config = noise_config.clone();
+                let config = Arc::clone(&config);
+
+                tokio::spawn(async move {
+                    if let Err(e) = handle_dns_query(
+                        dns_server,
+                        payload,
+                        client_addr,
+                        tx_id,
+                        sessions,
+                        noise_config,
+                        config,
+                    )
+                    .await
+                    {
+                        log::error!("DNS query handler error for {}: {}", client_addr, e);
+                    }
+                });
+            }
+            Err(e) => {
+                log::error!("Failed to receive DNS query: {}", e);
+            }
+        }
+    }
+}
+
+/// Handle a single DNS query
+async fn handle_dns_query(
+    dns_server: Arc<DnsTransportServer>,
+    payload: Vec<u8>,
+    client_addr: SocketAddr,
+    tx_id: u16,
+    sessions: Arc<Mutex<HashMap<SocketAddr, DnsSession>>>,
+    noise_config: Option<NoiseConfig>,
+    config: Arc<NooshdarooConfig>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    log::debug!(
+        "Handling DNS query from {}: {} bytes (tx_id={})",
+        client_addr,
+        payload.len(),
+        tx_id
+    );
+
+    // Get or create session
+    let mut sessions_guard = sessions.lock().await;
+    let session = sessions_guard
+        .entry(client_addr)
+        .or_insert_with(|| {
+            log::info!("Creating new DNS tunnel session for {}", client_addr);
+            DnsSession {
+                last_seen: std::time::Instant::now(),
+                noise_transport: None,
+                target_conn: None,
+                pending_response: Vec::new(),
+                handshake_complete: false,
+            }
+        });
+    session.last_seen = std::time::Instant::now();
+
+    // Check if we need to perform Noise handshake
+    if session.noise_transport.is_none() {
+        if let Some(ref noise_cfg) = noise_config {
+            log::info!("Starting Noise handshake for DNS session from {}", client_addr);
+
+            // Create virtual stream from DNS transport
+            // We'll use a memory buffer to simulate a bidirectional stream for the handshake
+            let mut virtual_stream = DnsVirtualStream::new(
+                Arc::clone(&dns_server),
+                client_addr,
+                tx_id,
+                payload.clone(),
+            );
+
+            // NOTE: Do NOT use protocol wrapper here!
+            // The DNS format parsing (parse_dns_query) already extracts the payload,
+            // so the protocol wrapping/unwrapping is handled by the DNS layer itself.
+            // Using a protocol wrapper here would cause double-unwrapping and corrupt the data.
+
+            // Perform server-side Noise handshake WITHOUT protocol wrapper
+            match NoiseTransport::server_handshake(&mut virtual_stream, noise_cfg, None).await {
+                Ok(transport) => {
+                    log::info!("Noise handshake completed for {}", client_addr);
+                    session.noise_transport = Some(transport);
+                    session.handshake_complete = true;
+
+                    // Handshake generates responses - they're already sent by virtual_stream
+                    drop(sessions_guard);
+                    return Ok(());
+                }
+                Err(e) => {
+                    log::error!("Noise handshake failed for {}: {}", client_addr, e);
+                    drop(sessions_guard);
+
+                    // Send error response
+                    dns_server
+                        .send_response(b"HANDSHAKE_ERROR", client_addr, tx_id)
+                        .await?;
+                    return Err(e.into());
+                }
+            }
+        } else {
+            log::error!("No Noise config provided for DNS tunnel server");
+            drop(sessions_guard);
+            return Err("Noise encryption required for DNS tunnel".into());
+        }
+    }
+
+    // At this point, we have an established Noise session
+    let noise_transport = session.noise_transport.as_mut().unwrap();
+
+    // Decrypt the payload
+    let decrypted = match noise_transport.decrypt(&payload) {
+        Ok(data) => {
+            log::debug!(
+                "Decrypted {} bytes -> {} bytes for {}",
+                payload.len(),
+                data.len(),
+                client_addr
+            );
+            data
+        }
+        Err(e) => {
+            log::error!("Failed to decrypt DNS payload from {}: {}", client_addr, e);
+            drop(sessions_guard);
+
+            // Send error response
+            let error_encrypted = vec![0xFF]; // Error marker
+            dns_server
+                .send_response(&error_encrypted, client_addr, tx_id)
+                .await?;
+            return Err(e.into());
+        }
+    };
+
+    // Check if this is the initial target connection request
+    if session.target_conn.is_none() {
+        // Parse target address (format: "host:port" or "[ipv6]:port")
+        let target_str = String::from_utf8_lossy(&decrypted);
+        log::info!("DNS tunnel connection request from {}: target={}", client_addr, target_str);
+
+        // Parse target address
+        let target_addr = parse_target_address(&target_str)?;
+
+        // Connect to target
+        match TcpStream::connect(&target_addr).await {
+            Ok(mut stream) => {
+                stream.set_nodelay(true)?;
+                log::info!(
+                    "Connected to target {} for DNS client {}",
+                    target_addr,
+                    client_addr
+                );
+                session.target_conn = Some(stream);
+
+                // Send success response
+                let success_msg = b"OK";
+                let encrypted = noise_transport.encrypt(success_msg)?;
+                drop(sessions_guard); // Release lock before async operation
+
+                dns_server
+                    .send_response(&encrypted, client_addr, tx_id)
+                    .await?;
+
+                log::debug!("Sent OK response to {}", client_addr);
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to connect to target {} for {}: {}",
+                    target_addr,
+                    client_addr,
+                    e
+                );
+
+                // Send error response
+                let error_msg = format!("CONNECTION_FAILED: {}", e);
+                let encrypted = noise_transport.encrypt(error_msg.as_bytes())?;
+                drop(sessions_guard);
+
+                dns_server
+                    .send_response(&encrypted, client_addr, tx_id)
+                    .await?;
+
+                return Err(e.into());
+            }
+        }
+    } else {
+        // This is application data - forward to target
+        let target_conn = session.target_conn.as_mut().unwrap();
+
+        log::debug!(
+            "Forwarding {} bytes from {} to target",
+            decrypted.len(),
+            client_addr
+        );
+
+        // Write data to target
+        if let Err(e) = target_conn.write_all(&decrypted).await {
+            log::error!("Failed to write to target for {}: {}", client_addr, e);
+
+            // Send error response (encrypt before dropping guard)
+            let error_msg = b"TARGET_WRITE_ERROR";
+            let encrypted = noise_transport.encrypt(error_msg)?;
+            drop(sessions_guard);
+
+            dns_server
+                .send_response(&encrypted, client_addr, tx_id)
+                .await?;
+            return Err(e.into());
+        }
+
+        // Read response from target (non-blocking with timeout)
+        let mut response_buf = vec![0u8; 8192];
+        let response_data = match tokio::time::timeout(
+            Duration::from_millis(100),
+            target_conn.read(&mut response_buf)
+        )
+        .await
+        {
+            Ok(Ok(0)) => {
+                log::info!("Target closed connection for {}", client_addr);
+                // Connection closed
+                session.target_conn = None;
+                b"CONNECTION_CLOSED"
+            }
+            Ok(Ok(n)) => {
+                log::debug!("Read {} bytes from target for {}", n, client_addr);
+                &response_buf[..n]
+            }
+            Ok(Err(e)) => {
+                log::error!("Error reading from target for {}: {}", client_addr, e);
+                session.target_conn = None;
+                b"TARGET_READ_ERROR"
+            }
+            Err(_) => {
+                // Timeout - no data available yet
+                // Send empty response to acknowledge receipt
+                b""
+            }
+        };
+
+        // Encrypt and send response
+        let encrypted = noise_transport.encrypt(response_data)?;
+        drop(sessions_guard);
+
+        dns_server
+            .send_response(&encrypted, client_addr, tx_id)
+            .await?;
+
+        log::debug!(
+            "Sent {} bytes response to {} (encrypted: {} bytes)",
+            response_data.len(),
+            client_addr,
+            encrypted.len()
+        );
+    }
+
+    Ok(())
+}
+
+/// Parse target address from string (handles IPv4, IPv6, and hostnames)
+fn parse_target_address(addr_str: &str) -> Result<String, Box<dyn std::error::Error>> {
+    // Check for IPv6 format: [ipv6]:port
+    if addr_str.starts_with('[') {
+        if let Some(end_bracket) = addr_str.find(']') {
+            if addr_str.len() > end_bracket + 1 && &addr_str[end_bracket + 1..end_bracket + 2] == ":" {
+                // Valid IPv6 format
+                return Ok(addr_str.to_string());
+            }
+        }
+        return Err("Invalid IPv6 address format".into());
+    }
+
+    // IPv4 or hostname format: host:port
+    if addr_str.contains(':') {
+        Ok(addr_str.to_string())
+    } else {
+        Err("Invalid target address format (missing port)".into())
+    }
+}
+
+/// Virtual stream adapter for Noise handshake over DNS transport
+/// This allows us to use NoiseTransport's handshake methods with DNS packets
+struct DnsVirtualStream {
+    dns_server: Arc<DnsTransportServer>,
+    client_addr: SocketAddr,
+    tx_id: u16,
+    read_buffer: Vec<u8>,
+    read_pos: usize,
+    pending_writes: Vec<Vec<u8>>,
+}
+
+impl DnsVirtualStream {
+    fn new(
+        dns_server: Arc<DnsTransportServer>,
+        client_addr: SocketAddr,
+        tx_id: u16,
+        initial_data: Vec<u8>,
+    ) -> Self {
+        Self {
+            dns_server,
+            client_addr,
+            tx_id,
+            read_buffer: initial_data,
+            read_pos: 0,
+            pending_writes: Vec::new(),
+        }
+    }
+}
+
+impl AsyncRead for DnsVirtualStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        // Read from buffered data
+        if self.read_pos < self.read_buffer.len() {
+            let remaining = &self.read_buffer[self.read_pos..];
+            let to_copy = std::cmp::min(buf.remaining(), remaining.len());
+            buf.put_slice(&remaining[..to_copy]);
+            self.read_pos += to_copy;
+            Poll::Ready(Ok(()))
+        } else {
+            // No more data available - for handshake, this means we need to wait for next packet
+            // In a real implementation, this would block until the next DNS packet arrives
+            Poll::Ready(Ok(())) // Return EOF for now
+        }
+    }
+}
+
+impl AsyncWrite for DnsVirtualStream {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        // Buffer writes - they'll be sent when flush is called
+        self.pending_writes.push(buf.to_vec());
+        Poll::Ready(Ok(buf.len()))
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        // Send all pending writes as DNS responses
+        if !self.pending_writes.is_empty() {
+            let dns_server = Arc::clone(&self.dns_server);
+            let client_addr = self.client_addr;
+            let tx_id = self.tx_id;
+            let writes = std::mem::take(&mut self.pending_writes);
+
+            let waker = cx.waker().clone();
+            tokio::spawn(async move {
+                for data in writes {
+                    if let Err(e) = dns_server.send_response(&data, client_addr, tx_id).await {
+                        log::error!("Failed to send DNS handshake response: {}", e);
+                    }
+                }
+                waker.wake();
+            });
+
+            Poll::Pending
+        } else {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
 }
 
 #[cfg(test)]
