@@ -1,0 +1,28 @@
+mode = "client"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+password = "nooshdaroo-local-test"
+
+[shapeshift.strategy]
+type = "fixed"
+protocol = "https"
+
+[socks]
+listen_addr = "127.0.0.1:10080"
+server_address = "127.0.0.1:8443"
+auth_required = false
+
+[transport]
+pattern = "nk"
+remote_public_key = "lvRQB8LXLBoU4eKYBTd+/JHhGT9Mt7rwerMhY0uHdHU="
+
+[detection]
+enable_fingerprint_randomization = false
+enable_timing_randomization = false
+enable_tls_sni_masking = false
+suspicion_threshold = 0.7
+enable_decoy_traffic = false
+decoy_traffic_rate = 0.1
+enable_tls_session_emulation = true

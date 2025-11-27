@@ -8,11 +8,31 @@ use crate::protocol::ProtocolId;
 use crate::traffic::TrafficShaper;
 use crate::psf::{PsfInterpreter, ProtocolFrame};
 
+/// Format bytes as hex dump for debugging
+fn hex_dump(data: &[u8], max_bytes: usize) -> String {
+    let len = data.len().min(max_bytes);
+    let hex: Vec<String> = data[..len].iter().map(|b| format!("{:02x}", b)).collect();
+    if data.len() > max_bytes {
+        format!("{}... ({} bytes total)", hex.join(" "), data.len())
+    } else {
+        format!("{} ({} bytes)", hex.join(" "), data.len())
+    }
+}
+
 /// Role of the protocol wrapper (client or server)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WrapperRole {
     Client,
     Server,
+}
+
+impl WrapperRole {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            WrapperRole::Client => "Client",
+            WrapperRole::Server => "Server",
+        }
+    }
 }
 
 // Embed all PSF files at compile time
@@ -142,6 +162,16 @@ impl ProtocolWrapper {
                         self.role,
                         self.protocol_id.as_str()
                     );
+                    log::debug!(
+                        "  [HEX] Input Noise data ({}): {}",
+                        self.role.as_str(),
+                        hex_dump(noise_data, 64)
+                    );
+                    log::debug!(
+                        "  [HEX] Output wrapped data ({}): {}",
+                        self.role.as_str(),
+                        hex_dump(&wrapped, 64)
+                    );
                     return Ok(wrapped);
                 }
                 Err(e) => {
@@ -180,6 +210,16 @@ impl ProtocolWrapper {
                         unwrapped.len(),
                         self.role,
                         self.protocol_id.as_str()
+                    );
+                    log::debug!(
+                        "  [HEX] Input wrapped data ({}): {}",
+                        self.role.as_str(),
+                        hex_dump(wrapped_data, 64)
+                    );
+                    log::debug!(
+                        "  [HEX] Output Noise data ({}): {}",
+                        self.role.as_str(),
+                        hex_dump(&unwrapped, 64)
                     );
                     return Ok(unwrapped);
                 }

@@ -66,9 +66,15 @@ libc = "0.2"
 clap = { version = "4.5", features = ["derive", "env", "cargo"] }
 
 # Noise Protocol for encrypted transport
-snow = "0.9"
+snow = { version = "0.9", features = ["risky-raw-split"] }
 base64 = "0.22"
 hex = "0.4"
+
+# QUIC with Noise (nQUIC) transport
+quinn = "0.11"
+quinn-proto = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+ring = "0.17"
 
 [build-dependencies]
 chrono = "0.4"

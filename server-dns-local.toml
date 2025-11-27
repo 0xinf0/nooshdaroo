@@ -1,0 +1,27 @@
+mode = "server"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+password = "test-local-dns"
+
+[shapeshift.strategy]
+type = "fixed"
+protocol = "dns-google"
+
+[server]
+listen_addr = "127.0.0.1:15353"
+transport = "udp"
+
+[transport]
+pattern = "nk"
+local_private_key = "5cxpzw1sBSmGFXVzUT6xV4gh8hlhlSVwWB8W1wSIMRI="
+
+[detection]
+enable_fingerprint_randomization = false
+enable_timing_randomization = false
+enable_tls_sni_masking = false
+suspicion_threshold = 0.7
+enable_decoy_traffic = false
+decoy_traffic_rate = 0.1
+enable_tls_session_emulation = true

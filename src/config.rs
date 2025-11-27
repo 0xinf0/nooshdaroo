@@ -122,6 +122,11 @@ pub struct SocksConfig {
     /// Remote server address for tunneling (client mode)
     pub server_address: Option<String>,
 
+    /// Transport type (TCP or UDP)
+    /// For Iran censorship bypass, use UDP on port 53
+    #[serde(default)]
+    pub transport: TransportType,
+
     /// Require authentication
     pub auth_required: bool,
 
@@ -137,6 +142,7 @@ impl Default for SocksConfig {
         Self {
             listen_addr: "127.0.0.1:1080".parse().unwrap(),
             server_address: None,
+            transport: TransportType::default(),
             auth_required: false,
             username: None,
             password: None,
@@ -215,11 +221,30 @@ pub enum DistributionType {
     Exponential,
 }
 
+/// Transport type (TCP or UDP)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TransportType {
+    Tcp,
+    Udp,
+}
+
+impl Default for TransportType {
+    fn default() -> Self {
+        Self::Tcp // Default to TCP for backwards compatibility
+    }
+}
+
 /// Server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Listen address
     pub listen_addr: SocketAddr,
+
+    /// Transport type (TCP or UDP)
+    /// For Iran censorship bypass, use UDP on port 53
+    #[serde(default)]
+    pub transport: TransportType,
 }
 
 /// Detection resistance configuration

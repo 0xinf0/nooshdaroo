@@ -1,0 +1,28 @@
+mode = "client"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+password = "nooshdaroo-secret-shared"
+
+[shapeshift.strategy]
+type = "fixed"
+protocol = "dns-udp-tunnel"
+
+[socks]
+listen_addr = "127.0.0.1:1080"
+server_address = "23.128.36.102:53"
+auth_required = false
+
+[transport]
+pattern = "nk"
+remote_public_key = "4wIWM/RDNNY1GhBqK3eLgFBznWzq7RIhaPwhUy9Cpn8="
+
+[detection]
+enable_fingerprint_randomization = false
+enable_timing_randomization = false
+enable_tls_sni_masking = false
+suspicion_threshold = 0.7
+enable_decoy_traffic = false
+decoy_traffic_rate = 0.1
+enable_tls_session_emulation = true

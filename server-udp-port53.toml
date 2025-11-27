@@ -1,0 +1,44 @@
+# Nooshdaroo Server Configuration - UDP DNS on Port 53
+# For Iran censorship bypass where only DNS traffic (UDP port 53) passes through DPI
+
+mode = "server"
+
+[server]
+# IMPORTANT: Binding to port 53 requires root/sudo privileges
+# Run with: sudo ./nooshdaroo -c server-udp-port53.toml server
+listen_addr = "0.0.0.0:53"
+transport = "udp"  # UDP transport for DNS tunneling
+
+[encryption]
+cipher = "chacha20-poly1305"
+key_derivation = "argon2"
+password = "your-secure-password-change-this"
+salt = "nooshdaroo-salt-2024"
+
+[shapeshift]
+[shapeshift.strategy]
+type = "fixed"
+protocol = "dns-google"  # DNS protocol shape-shifting
+
+[traffic_shaping]
+enabled = true
+packet_size_distribution = "normal"
+mean_packet_size = 1400
+stddev_packet_size = 200
+mean_delay = 50
+stddev_delay = 20
+enable_bursts = false
+
+[detection]
+enable_fingerprint_randomization = true
+enable_timing_randomization = true
+enable_tls_sni_masking = false
+enable_tls_session_emulation = true  # Wrap in TLS Application Data records
+suspicion_threshold = 0.7
+enable_decoy_traffic = false
+decoy_traffic_rate = 0.1
+
+# Noise Protocol transport encryption
+[transport]
+pattern = "XX"  # Full handshake with mutual authentication
+prologue = "Nooshdaroo-v1-2024"

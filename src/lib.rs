@@ -70,6 +70,7 @@ pub mod bandwidth;
 pub mod config;
 pub mod dns_tunnel;
 pub mod dns_udp_tunnel;
+pub use dns_udp_tunnel::{DnsUdpTunnelServer, DnsUdpTunnelClient};
 pub mod embedded_keys;
 pub mod json_logger;
 pub mod library;
@@ -77,6 +78,7 @@ pub mod mobile;
 pub mod multiport_server;
 pub mod netflow_evasion;
 pub mod noise_transport;
+pub mod nquic;
 pub mod profiles;
 pub mod protocol;
 pub mod proxy;
@@ -97,7 +99,7 @@ pub use bandwidth::{
     AdaptiveRateLimiter, BandwidthController, NetworkMetrics, NetworkMonitor, QualityProfile,
     QualityTier,
 };
-pub use config::{NooshdarooConfig, ShapeShiftConfig, TrafficShapingConfig};
+pub use config::{NooshdarooConfig, ShapeShiftConfig, TrafficShapingConfig, TransportType, ServerConfig};
 pub use library::ProtocolLibrary;
 pub use mobile::{MobileConfigBuilder, NooshdarooMobileConfig};
 pub use noise_transport::{

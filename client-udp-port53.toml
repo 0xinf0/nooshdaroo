@@ -1,0 +1,45 @@
+# Nooshdaroo Client Configuration - UDP DNS Tunnel to Port 53
+# For connecting to servers in Iran where only DNS traffic passes through DPI
+
+mode = "client"
+
+[socks]
+# Local SOCKS5 proxy interface
+listen_addr = "127.0.0.1:10080"
+# Server address - connect to server's UDP port 53
+server_address = "YOUR_SERVER_IP:53"
+auth_required = false
+
+[encryption]
+cipher = "chacha20-poly1305"
+key_derivation = "argon2"
+password = "your-secure-password-change-this"  # Must match server password
+salt = "nooshdaroo-salt-2024"
+
+[shapeshift]
+[shapeshift.strategy]
+type = "fixed"
+protocol = "dns-google"  # DNS protocol shape-shifting
+
+[traffic_shaping]
+enabled = true
+packet_size_distribution = "normal"
+mean_packet_size = 1400
+stddev_packet_size = 200
+mean_delay = 50
+stddev_delay = 20
+enable_bursts = false
+
+[detection]
+enable_fingerprint_randomization = true
+enable_timing_randomization = true
+enable_tls_sni_masking = false
+enable_tls_session_emulation = true  # Wrap in TLS Application Data records
+suspicion_threshold = 0.7
+enable_decoy_traffic = false
+decoy_traffic_rate = 0.1
+
+# Noise Protocol transport encryption
+[transport]
+pattern = "XX"  # Full handshake with mutual authentication
+prologue = "Nooshdaroo-v1-2024"

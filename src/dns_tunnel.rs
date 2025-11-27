@@ -10,20 +10,29 @@ const MAX_LABEL_LEN: usize = 63;
 /// Maximum total QNAME length
 const MAX_QNAME_LEN: usize = 253;
 
-/// Base domain for tunnel queries
-const TUNNEL_DOMAIN: &str = "tunnel.example.com";
+/// Popular domains for tunnel queries (rotated to blend with legitimate traffic)
+const TUNNEL_DOMAINS: &[&str] = &[
+    "google.com",
+    "apple.com",
+    "challenges.cloudflare.com",
+];
+
+/// Get a tunnel domain based on a seed (for consistent encoding/decoding)
+fn get_tunnel_domain(seed: u8) -> &'static str {
+    TUNNEL_DOMAINS[(seed as usize) % TUNNEL_DOMAINS.len()]
+}
 
 /// Encode payload data into a valid DNS QNAME
 ///
 /// Takes encrypted data and encodes it as hex in subdomain labels:
-/// Input: [0xab, 0x3d, 0x01, 0xf7, 0xc9, 0xe2]
-/// Output: \x06ab3d01\x06f7c9e2\x06tunnel\x07example\x03com\x00
+/// Input: [0xab, 0x3d, 0x01, 0xf7, 0xc9, 0xe2], seed: 0
+/// Output: \x06ab3d01\x06f7c9e2\x06google\x03com\x00
 ///
 /// Each label is:
 /// - Length byte (1-63)
 /// - Data bytes (hex encoded payload chunk)
 /// - Terminated with \x00
-pub fn encode_qname(payload: &[u8]) -> Vec<u8> {
+pub fn encode_qname_with_seed(payload: &[u8], seed: u8) -> Vec<u8> {
     let mut qname = Vec::new();
 
     // Hex encode the payload
@@ -42,8 +51,9 @@ pub fn encode_qname(payload: &[u8]) -> Vec<u8> {
         qname.extend_from_slice(chunk.as_bytes());
     }
 
-    // Append base domain: tunnel.example.com
-    for part in TUNNEL_DOMAIN.split('.') {
+    // Append base domain (rotated based on seed)
+    let domain = get_tunnel_domain(seed);
+    for part in domain.split('.') {
         qname.push(part.len() as u8);
         qname.extend_from_slice(part.as_bytes());
     }
@@ -54,6 +64,23 @@ pub fn encode_qname(payload: &[u8]) -> Vec<u8> {
     qname
 }
 
+/// Encode payload with default seed (for backwards compatibility)
+pub fn encode_qname(payload: &[u8]) -> Vec<u8> {
+    // Use first byte of payload as seed for domain rotation
+    let seed = payload.first().copied().unwrap_or(0);
+    encode_qname_with_seed(payload, seed)
+}
+
+/// Known domain parts that indicate end of payload data
+const DOMAIN_PARTS: &[&str] = &[
+    "google", "apple", "challenges", "cloudflare", "com",
+];
+
+/// Check if a label is part of a base domain (not payload data)
+fn is_domain_part(label: &str) -> bool {
+    DOMAIN_PARTS.contains(&label)
+}
+
 /// Decode DNS QNAME back to payload
 ///
 /// Extracts hex-encoded data from subdomain labels
@@ -61,7 +88,7 @@ pub fn decode_qname(qname: &[u8]) -> Result<Vec<u8>, String> {
     let mut hex_data = String::new();
     let mut pos = 0;
 
-    // Read labels until we hit the base domain
+    // Read labels until we hit a base domain part
     while pos < qname.len() {
         let len = qname[pos] as usize;
         if len == 0 {
@@ -77,8 +104,8 @@ pub fn decode_qname(qname: &[u8]) -> Result<Vec<u8>, String> {
         let label_str = std::str::from_utf8(label)
             .map_err(|e| format!("Invalid UTF-8 in label: {}", e))?;
 
-        // Check if this is part of the base domain
-        if label_str == "tunnel" || label_str == "example" || label_str == "com" {
+        // Check if this is part of a base domain
+        if is_domain_part(label_str) {
             break; // Reached base domain
         }
 
@@ -150,8 +177,9 @@ pub fn build_dns_response(
         }
     } else {
         // If no query provided, create a minimal question section
-        // QNAME: tunnel.example.com (from TUNNEL_DOMAIN)
-        for part in TUNNEL_DOMAIN.split('.') {
+        // Use the first domain from TUNNEL_DOMAINS
+        let domain = get_tunnel_domain(0);
+        for part in domain.split('.') {
             packet.push(part.len() as u8);
             packet.extend_from_slice(part.as_bytes());
         }

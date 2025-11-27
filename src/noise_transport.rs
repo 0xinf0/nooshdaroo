@@ -32,6 +32,11 @@ pub enum NoisePattern {
     /// Mutual authentication
     /// Both client and server prove their identities
     KK,
+
+    /// Identity Known (for nQUIC)
+    /// Server identity known to client via static key
+    /// Used for QUIC handshake with Noise IK pattern
+    IK,
 }
 
 impl NoisePattern {
@@ -41,6 +46,7 @@ impl NoisePattern {
             NoisePattern::NK => "Noise_NK_25519_ChaChaPoly_BLAKE2s",
             NoisePattern::XX => "Noise_XX_25519_ChaChaPoly_BLAKE2s",
             NoisePattern::KK => "Noise_KK_25519_ChaChaPoly_BLAKE2s",
+            NoisePattern::IK => "Noise_IK_25519_ChaChaPoly_BLAKE2s",
         }
     }
 
@@ -50,6 +56,7 @@ impl NoisePattern {
             "Noise_NK_25519_ChaChaPoly_BLAKE2s" => Some(NoisePattern::NK),
             "Noise_XX_25519_ChaChaPoly_BLAKE2s" => Some(NoisePattern::XX),
             "Noise_KK_25519_ChaChaPoly_BLAKE2s" => Some(NoisePattern::KK),
+            "Noise_IK_25519_ChaChaPoly_BLAKE2s" => Some(NoisePattern::IK),
             _ => None,
         }
     }
@@ -110,6 +117,15 @@ impl NoiseConfig {
                     return Err(anyhow!("KK pattern requires remote_public_key for client"));
                 }
             }
+            NoisePattern::IK => {
+                // IK pattern: client knows server's static public key
+                if self.remote_public_key.is_none() {
+                    return Err(anyhow!("IK pattern requires remote_public_key for client"));
+                }
+                if self.local_private_key.is_none() {
+                    return Err(anyhow!("IK pattern requires local_private_key for client"));
+                }
+            }
         }
         Ok(())
     }
@@ -134,6 +150,12 @@ impl NoiseConfig {
                 }
                 if self.remote_public_key.is_none() {
                     return Err(anyhow!("KK pattern requires remote_public_key for server"));
+                }
+            }
+            NoisePattern::IK => {
+                // IK pattern: server's static key is known to client
+                if self.local_private_key.is_none() {
+                    return Err(anyhow!("IK pattern requires local_private_key for server"));
                 }
             }
         }
