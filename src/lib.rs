@@ -119,7 +119,8 @@ pub use shapeshift::ShapeShiftController;
 pub use socat::{Bidirectional, ClientToServer, RelayMode, ServerToClient, SocatBuilder, SocatRelay};
 pub use strategy::{ShapeShiftStrategy, StrategyType};
 pub use transport::{
-    DatagramTransport, StreamTransport, TransportConfig, TransportSemantics, TransportType,
+    DatagramTransport, StreamTransport, TransportConfig, TransportSemantics,
+    TransportType as TransportLayerType,
 };
 pub use socks_udp::{UdpSocksHeader, UdpSocksServer};
 pub use udp_proxy::{SimpleUdpForwarder, UdpProxyServer};

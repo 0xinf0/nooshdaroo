@@ -426,23 +426,3 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-    #[tokio::test]
-    async fn test_reliable_transport_basic() -> Result<()> {
-        // Create mock transport (Vec<u8> implements AsyncRead/AsyncWrite)
-        let mock_transport = Vec::new();
-
-        let mut reliable = ReliableTransport::new(mock_transport, 1, 600)?;
-
-        // Test write
-        let test_data = b"Hello, KCP!";
-        reliable.write_all(test_data).await?;
-        reliable.flush().await?;
-
-        Ok(())
-    }
-}

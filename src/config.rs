@@ -343,7 +343,7 @@ mod tests {
         assert!(config.validate().is_err());
 
         // Should succeed with password
-        config.encryption.password = "test-password".to_string();
+        config.encryption.password = Some("test-password".to_string());
         assert!(config.validate().is_ok());
     }
 
@@ -351,7 +351,7 @@ mod tests {
     fn test_server_mode_validation() {
         let mut config = NooshdarooConfig::default();
         config.mode = NooshdarooMode::Server;
-        config.encryption.password = "test".to_string();
+        config.encryption.password = Some("test".to_string());
 
         // Should fail without server config
         assert!(config.validate().is_err());

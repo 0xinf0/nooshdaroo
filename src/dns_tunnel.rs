@@ -132,7 +132,7 @@ pub fn build_dns_query(payload: &[u8], transaction_id: u16) -> Vec<u8> {
     packet.extend_from_slice(&[0x00, 0x00]); // ARCOUNT: 0 additional
 
     // Question section (use real domains: challenges.cloudflare.com or www.google.com)
-    let qname = encode_qname(payload, transaction_id);
+    let qname = encode_qname(payload);
     packet.extend_from_slice(&qname);
 
     // QTYPE: A record (0x0001)
