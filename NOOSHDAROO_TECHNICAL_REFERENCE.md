@@ -33,11 +33,19 @@
 Nooshdaroo (نوشدارو, Persian for "antidote") is a sophisticated proxy system designed to bypass network censorship and deep packet inspection (DPI). It disguises encrypted SOCKS5 proxy traffic as legitimate network protocols through dynamic protocol emulation and statistical traffic shaping.
 
 **Key Capabilities:**
-- 9 nDPI-validated protocol emulations (HTTPS, DNS, TLS 1.3, SSH, QUIC)
+- 6 working protocol emulations (5 TLS-based + DNS UDP tunnel)
 - Encrypted transport using Noise Protocol Framework
 - Multiple proxy modes (SOCKS5, HTTP CONNECT)
 - Statistical traffic shaping for DPI evasion
 - Cross-platform support (Linux, macOS, Windows, with mobile foundations)
+
+**Protocol Status (November 2025):**
+- TLS-based protocols (https, https_google_com, tls_simple, tls13): ✅ Working
+- DNS UDP tunnel: ✅ Working (~84 KB/sec throughput due to DNS overhead)
+- SSH/QUIC protocols: ❌ Broken (Noise handshake incompatible)
+
+**Local Tunnel Performance (100MB test from nooshdaroo.net):**
+- https_google_com protocol: **47.9 MB/s (383 Mbps)** - 100MB in 2.19 seconds
 
 ### 1.2 Primary Use Cases
 
@@ -297,23 +305,26 @@ normal_protocols = ["quic", "websocket"]
 
 ### 3.3 Protocol Library
 
-**Implementation:** `src/library.rs` (17,261 lines), 9 validated PSF files
+**Implementation:** `src/library.rs` (17,261 lines), Protocol files in `protocols/` directory
 
-**Validated Protocols (nDPI-tested):**
+**Protocol Test Results (November 2025):**
 
-| Protocol | PSF File | Default Port | Description |
-|----------|----------|--------------|-------------|
-| HTTPS | protocols/http/https.psf | 443 | Standard HTTPS/TLS application data |
-| HTTPS (Google) | protocols/http/https_google_com.psf | 443 | HTTPS with Google.com SNI |
-| TLS Simple | protocols/http/tls_simple.psf | 443 | Minimal TLS 1.2/1.3 emulation |
-| TLS 1.3 Complete | protocols/http/tls13_complete.psf | 443 | Full TLS 1.3 with ClientHello/ServerHello |
-| DNS | protocols/dns/dns.psf | 53 | Standard DNS queries |
-| DNS (Google) | protocols/dns/dns_google_com.psf | 53 | DNS A record queries for google.com |
-| SSH | protocols/ssh/ssh.psf | 22 | SSH-2.0 protocol emulation |
-| QUIC | protocols/quic/quic.psf | 443 | QUIC/HTTP3 protocol |
-| TLS 1.3 | protocols/tls/tls13.psf | 443 | TLS 1.3 record-level emulation |
+| Protocol | PSF File | Status | Speed | Notes |
+|----------|----------|--------|-------|-------|
+| HTTPS | protocols/http/https.psf | ✅ WORKING | ~122 KB/sec | TLS 1.3 Application Data emulation |
+| HTTPS (Google) | protocols/http/https_google_com.psf | ✅ WORKING | ~122 KB/sec | HTTPS with www.google.com SNI |
+| TLS Simple | protocols/http/tls_simple.psf | ✅ WORKING | ~123 KB/sec | Minimal TLS emulation |
+| TLS 1.3 Complete | protocols/http/tls13_complete.psf | ✅ WORKING | ~120 KB/sec | Full TLS 1.3 with handshake |
+| TLS 1.3 | protocols/tls/tls13.psf | ✅ WORKING | ~122 KB/sec | TLS 1.3 record-level emulation |
+| DNS UDP Tunnel | src/dns_udp_tunnel.rs | ✅ WORKING | ~84 KB/sec | UDP transport over port 53 |
+| SSH | protocols/ssh/ssh.psf | ❌ BROKEN | - | Noise handshake incompatible |
+| QUIC | protocols/quic/quic.psf | ❌ BROKEN | - | Noise handshake incompatible |
+| DNS (TCP) | protocols/dns/dns.psf | ⚠️ UNTESTED | - | PSF-based DNS |
 
-**Total:** 9 nDPI-validated protocol definitions
+**Working Protocols:** 6 (5 TLS-based + 1 DNS UDP tunnel)
+**Broken Protocols:** 2 (SSH, QUIC - incompatible handshake formats)
+
+**Note:** SSH and QUIC protocols have PSF definitions that conflict with the Noise Protocol NK handshake pattern. These protocols define their own handshake sequences (SSH version string, QUIC Initial packets) that don't integrate with Noise's ephemeral key exchange.
 
 **Protocol Metadata Structure:**
 ```rust
@@ -2116,23 +2127,39 @@ Total Source Lines: 9,725 lines of Rust code
 Total Protocols: 9 nDPI-validated PSF definitions
 ```
 
-### Appendix C: Protocol Validation Status
+### Appendix C: Protocol Test Results (November 2025)
 
-All 9 protocols have been validated against nDPI v4.15.0 for detection resistance:
+**Functional Testing Results:**
 
-| Protocol | nDPI Classification | Confidence | Status |
-|----------|-------------------|------------|--------|
-| https.psf | TLS/SSL | High | ✅ Validated |
-| https_google_com.psf | TLS.Google | High | ✅ Validated |
-| dns.psf | DNS | High | ✅ Validated |
-| dns_google_com.psf | DNS | High | ✅ Validated |
-| ssh.psf | SSH | High | ✅ Validated |
-| quic.psf | QUIC | High | ✅ Validated |
-| tls_simple.psf | TLS | High | ✅ Validated |
-| tls13_complete.psf | TLS | High | ✅ Validated |
-| tls13.psf | TLS | High | ✅ Validated |
+| Protocol | Test Status | Notes |
+|----------|------------|-------|
+| https.psf | ✅ WORKING | TLS Application Data emulation |
+| https_google_com.psf | ✅ WORKING | TLS with www.google.com SNI |
+| tls_simple.psf | ✅ WORKING | Minimal TLS emulation |
+| tls13_complete.psf | ✅ WORKING | Full TLS 1.3 handshake |
+| tls13.psf | ✅ WORKING | TLS 1.3 record layer |
+| dns-udp-tunnel | ✅ WORKING | UDP/53 transport (~84 KB/sec due to DNS overhead) |
+| ssh.psf | ❌ BROKEN | Noise handshake failed |
+| quic.psf | ❌ BROKEN | Noise handshake failed |
+| dns.psf | ⚠️ UNTESTED | TCP DNS PSF |
 
-**Validation Method:** Each protocol was tested using tcpdump packet captures analyzed with nDPI's ndpiReader tool to verify correct protocol classification.
+**Test Method:** Local client-server tunnel testing using curl via SOCKS5 proxy. Functional tests verify protocol handshake and data transfer work correctly. For production performance benchmarks (84.5 MB/s), see Section 10.
+
+**Why SSH and QUIC Fail:**
+- SSH protocol defines `SshVersionString` handshake ("SSH-2.0-OpenSSH_8.9\\r\\n") that conflicts with Noise NK handshake
+- QUIC protocol defines `QuicInitial` packets with variable-length connection IDs that conflict with Noise handshake
+- Both protocols require custom handshake sequences that don't integrate with Noise's ephemeral key exchange pattern
+- **Recommendation:** Use TLS-based protocols (https, tls_simple, tls13) or DNS UDP tunnel for production
+
+**nDPI Classification (validated protocols only):**
+
+| Protocol | nDPI Classification | Confidence |
+|----------|-------------------|------------|
+| https.psf | TLS/SSL | High |
+| https_google_com.psf | TLS.Google | High |
+| tls_simple.psf | TLS | High |
+| tls13_complete.psf | TLS | High |
+| tls13.psf | TLS | High |
 
 ### Appendix D: References
 
@@ -2165,8 +2192,8 @@ All 9 protocols have been validated against nDPI v4.15.0 for detection resistanc
 
 ## Document Metadata
 
-**Version:** 1.0.0
-**Last Updated:** 2025-11-16
+**Version:** 1.1.0
+**Last Updated:** 2025-11-28
 **Authors:** Sina Rabbani, Claude Code (Anthropic)
 **Verification:** All code references verified against actual implementation
 **Lines Analyzed:** 9,725 lines of source code, 9 validated protocol files

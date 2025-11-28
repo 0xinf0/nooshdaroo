@@ -69,6 +69,8 @@ clap = { version = "4.5", features = ["derive", "env", "cargo"] }
 snow = { version = "0.9", features = ["risky-raw-split"] }
 base64 = "0.22"
 hex = "0.4"
+data-encoding = "2.5"  # For DNS-safe base32 encoding
+futures = "0.3"  # For join_all in pipelining
 
 # QUIC with Noise (nQUIC) transport
 quinn = "0.11"

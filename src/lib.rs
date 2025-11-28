@@ -70,7 +70,7 @@ pub mod bandwidth;
 pub mod config;
 pub mod dns_tunnel;
 pub mod dns_udp_tunnel;
-pub use dns_udp_tunnel::{DnsUdpTunnelServer, DnsUdpTunnelClient};
+pub use dns_udp_tunnel::{DnsUdpTunnelServer, DnsUdpTunnelClient, DnsUdpTunnelClientPipelined};
 pub mod embedded_keys;
 pub mod json_logger;
 pub mod library;

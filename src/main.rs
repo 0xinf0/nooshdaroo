@@ -14,7 +14,7 @@ use tokio::sync::RwLock;
 use nooshdaroo::{
     Bidirectional, ClientToServer, NoiseTransport, NooshdarooClient, NooshdarooConfig,
     NooshdarooServer, ProxyType, ServerToClient, SocatBuilder, UnifiedProxyListener,
-    DnsUdpTunnelServer, DnsUdpTunnelClient,
+    DnsUdpTunnelServer, DnsUdpTunnelClient, DnsUdpTunnelClientPipelined,
 };
 use nooshdaroo::config::TransportType;
 
@@ -605,12 +605,14 @@ async fn handle_udp_tunnel_connection(
 
     log::debug!("SOCKS5 handshake complete, starting bidirectional relay via UDP DNS");
 
-    // Bidirectional relay via UDP DNS
+    // Bidirectional relay via UDP DNS with adaptive polling
     // DNS is request-response based, so we must poll for server data
-    // even when the client has nothing to send
+    // Adaptive strategy: poll faster when data is flowing, slower when idle
     let mut client_buf = vec![0u8; 65536];
-    let poll_interval = std::time::Duration::from_millis(50);
+    let mut poll_interval_ms = 10u64; // Start fast (10ms)
     let mut consecutive_empty_polls = 0u32;
+    const MIN_POLL_MS: u64 = 5;    // Fastest polling (aggressive)
+    const MAX_POLL_MS: u64 = 100;  // Slowest polling (idle backoff)
 
     loop {
         tokio::select! {
@@ -628,7 +630,8 @@ async fn handle_udp_tunnel_connection(
 
                         match dns_client.send_and_receive(data_req).await {
                             Ok(response) => {
-                                consecutive_empty_polls = 0; // Reset on successful data exchange
+                                consecutive_empty_polls = 0;
+                                poll_interval_ms = MIN_POLL_MS; // Data flowing, poll fast
                                 if response.len() > 1 {
                                     // Response contains data from server
                                     client.write_all(&response[1..]).await?;
@@ -646,9 +649,8 @@ async fn handle_udp_tunnel_connection(
                     }
                 }
             }
-            // Poll for server data when client has nothing to send
-            // This is critical for DNS tunneling since server can't push data
-            _ = tokio::time::sleep(poll_interval) => {
+            // Poll for server data with adaptive timing
+            _ = tokio::time::sleep(std::time::Duration::from_millis(poll_interval_ms)) => {
                 // Send POLL command (0x03) to retrieve any buffered server data
                 let poll_req = vec![0x03]; // POLL command
 
@@ -657,13 +659,14 @@ async fn handle_udp_tunnel_connection(
                         if response.len() > 1 {
                             // Server has buffered data for us
                             consecutive_empty_polls = 0;
+                            poll_interval_ms = MIN_POLL_MS; // Data available, poll fast
                             client.write_all(&response[1..]).await?;
                         } else {
-                            // No data available, back off slightly if many empty polls
+                            // No data available, gradually back off
                             consecutive_empty_polls += 1;
-                            if consecutive_empty_polls > 100 {
-                                // After many empty polls, sleep a bit longer
-                                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                            // Exponential backoff: increase interval by ~20% each empty poll
+                            if consecutive_empty_polls > 3 {
+                                poll_interval_ms = (poll_interval_ms * 6 / 5).min(MAX_POLL_MS);
                             }
                         }
                     }

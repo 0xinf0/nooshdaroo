@@ -363,6 +363,7 @@ mod tests {
         // Should succeed with server config
         config.server = Some(ServerConfig {
             listen_addr: "0.0.0.0:443".parse().unwrap(),
+            transport: TransportType::Tcp,
         });
         assert!(config.validate().is_ok());
     }
