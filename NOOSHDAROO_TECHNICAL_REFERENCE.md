@@ -1025,77 +1025,416 @@ impl BandwidthController {
 
 ## 7. Deployment Guide
 
-### 7.1 Quick Start
+### 7.1 Command-Line Interface Reference
 
-**Step 1: Install**
+Nooshdaroo provides a comprehensive CLI for all operations.
+
+**Main Command:**
+```
+nooshdaroo [OPTIONS] <COMMAND>
+
+Commands:
+  client      Run as a client (local proxy)
+  server      Run as a server (remote endpoint)
+  relay       Run in socat/relay mode
+  status      Show current protocol status
+  rotate      Rotate to a new protocol
+  protocols   List available protocols
+  genkey      Generate Noise protocol keypair (keys only)
+  genconf     Generate configuration files
+  test-paths  Test all protocol/port combinations to find best path
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+  -c, --config <FILE>  Configuration file path
+  -v, --verbose...     Enable verbose logging (-v info, -vv debug, -vvv trace)
+  -h, --help           Print help
+  -V, --version        Print version
+```
+
+### 7.2 Quick Start
+
+**Step 1: Build from Source**
 ```bash
-# From source
 git clone https://github.com/sinarabbaani/Nooshdaroo.git
 cd Nooshdaroo
 cargo build --release
-
 # Binary at: target/release/nooshdaroo
 ```
 
 **Step 2: Generate Keys**
 ```bash
-./target/release/nooshdaroo genkey \
-    --server-config server.toml \
-    --client-config client.toml \
-    --server-addr myserver.com:8443
+./target/release/nooshdaroo genkey
+
+# Output:
+# Private key: FPuZ4N2FhEg6VF7PzgSup2+87gnhpiEG0/4/Fhw9akw=
+# Public key: +jIjeirgxTa1QGiujHnlMN2dr3Ks6xYzhnpuZ/E+NmY=
 ```
 
-**Step 3: Start Server (on VPS)**
+**Step 3: Create Server Config** (`server.toml`):
+```toml
+mode = "server"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+
+[socks]
+listen_addr = "127.0.0.1:10080"
+auth_required = false
+
+[shapeshift]
+strategy = { type = "fixed", protocol = "https" }
+
+[server]
+listen_addr = "0.0.0.0:8443"
+
+[transport]
+local_private_key = "FPuZ4N2FhEg6VF7PzgSup2+87gnhpiEG0/4/Fhw9akw="
+```
+
+**Step 4: Create Client Config** (`client.toml`):
+```toml
+mode = "client"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+
+[socks]
+listen_addr = "127.0.0.1:1080"
+server_address = "myserver.com:8443"
+auth_required = false
+
+[shapeshift]
+strategy = { type = "fixed", protocol = "https" }
+
+[transport]
+remote_public_key = "+jIjeirgxTa1QGiujHnlMN2dr3Ks6xYzhnpuZ/E+NmY="
+```
+
+**Step 5: Start Server (on VPS)**
 ```bash
-./target/release/nooshdaroo server --config server.toml
+./target/release/nooshdaroo -c server.toml server
 ```
 
-**Step 4: Start Client (on local machine)**
+**Step 6: Start Client (on local machine)**
 ```bash
-./target/release/nooshdaroo client --config client.toml
+./target/release/nooshdaroo -c client.toml client
 ```
 
-**Step 5: Use Proxy**
+**Step 7: Use Proxy**
 ```bash
 curl --socks5 127.0.0.1:1080 https://example.com
 ```
 
-### 7.2 Server Deployment
+### 7.3 Server Command Reference
 
-**Minimal Server Config:**
-```toml
-[server]
-bind = "0.0.0.0:8443"
+**Synopsis:**
+```
+nooshdaroo server [OPTIONS]
 
-[transport]
-pattern = "nk"
-local_private_key = "SERVER_PRIVATE_KEY_HERE"
-
-[shapeshift.strategy]
-type = "adaptive"
+Options:
+  -b, --bind <BIND>                Server bind address [default: 0.0.0.0:8443]
+      --multi-port                 Listen on multiple ports simultaneously
+      --max-ports <MAX_PORTS>      Maximum ports when --multi-port enabled [default: 20]
+      --private-key <PRIVATE_KEY>  Base64 Noise private key (overrides config)
+                                   [env: NOOSHDAROO_PRIVATE_KEY]
+  -h, --help                       Print help
 ```
 
-**Production Server Config:**
+**Basic Usage:**
+```bash
+# With config file (recommended)
+nooshdaroo -c server.toml server
+
+# With command-line options
+nooshdaroo server --bind 0.0.0.0:8443 --private-key "BASE64_PRIVATE_KEY"
+
+# With environment variable
+export NOOSHDAROO_PRIVATE_KEY="FPuZ4N2FhEg6VF7PzgSup2+87gnhpiEG0/4/Fhw9akw="
+nooshdaroo -c server.toml server
+
+# Multi-port mode (listen on 443, 53, 22, 80, 8080, etc.)
+nooshdaroo -c server.toml server --multi-port --max-ports 20
+
+# Verbose logging
+nooshdaroo -c server.toml -vv server
+```
+
+**Server Configuration File:**
 ```toml
+mode = "server"
+
+[encryption]
+cipher = "cha-cha20-poly1305"    # AEAD cipher for payload encryption
+key_derivation = "argon2"        # Key derivation function
+
+[socks]
+listen_addr = "127.0.0.1:10080"  # Internal SOCKS listener (optional)
+auth_required = false             # SOCKS authentication
+
+[shapeshift]
+# Fixed protocol
+strategy = { type = "fixed", protocol = "https" }
+
+# OR time-based rotation
+# strategy = { type = "time-based", interval = "5m",
+#              sequence = ["https", "tls13", "quic"] }
+
+# OR random selection
+# strategy = { type = "random", protocol_pool = ["https", "ssh", "dns"] }
+
+# OR adaptive (auto-switch on detection)
+# strategy = { type = "adaptive", switch_threshold = 0.7,
+#              safe_protocols = ["https", "tls13"] }
+
 [server]
-bind = "0.0.0.0:8443"
-worker_threads = 8
-max_connections = 5000
+listen_addr = "0.0.0.0:8443"     # External listen address
 
 [transport]
-pattern = "nk"
-local_private_key = "SERVER_PRIVATE_KEY_HERE"
-
-[shapeshift.strategy]
-type = "adaptive"
-protocols = ["https", "quic", "dns"]
-rotation_interval = "15m"
-
-[logging]
-level = "info"
-file = "/var/log/nooshdaroo/server.log"
-rotate_daily = true
+local_private_key = "BASE64_PRIVATE_KEY_HERE"  # Noise NK pattern
 ```
+
+### 7.4 Client Command Reference
+
+**Synopsis:**
+```
+nooshdaroo client [OPTIONS]
+
+Options:
+  -b, --bind <BIND>              Local bind address [default: 127.0.0.1:1080]
+  -s, --server <SERVER>          Remote server address (if not in config)
+  -p, --proxy-type <PROXY_TYPE>  Proxy type: socks5, http [default: socks5]
+      --protocol <PROTOCOL>      Protocol override (https, dns, ssh, etc.)
+      --port <PORT>              Server port override
+      --profile <PROFILE>        Preset profile: corporate, airport, hotel,
+                                 china, iran, russia
+      --auto-protocol            Auto-select best protocol by testing
+  -h, --help                     Print help
+```
+
+**Basic Usage:**
+```bash
+# With config file (recommended)
+nooshdaroo -c client.toml client
+
+# With command-line options
+nooshdaroo client --bind 127.0.0.1:1080 --server myserver.com:8443
+
+# Override protocol from config
+nooshdaroo -c client.toml client --protocol tls13
+
+# HTTP CONNECT proxy instead of SOCKS5
+nooshdaroo -c client.toml client --proxy-type http
+
+# Use preset profile for specific environments
+nooshdaroo -c client.toml client --profile china
+nooshdaroo -c client.toml client --profile iran
+nooshdaroo -c client.toml client --profile corporate
+
+# Auto-select best protocol
+nooshdaroo -c client.toml client --auto-protocol
+
+# Verbose logging
+nooshdaroo -c client.toml -vv client
+```
+
+**Client Configuration File:**
+```toml
+mode = "client"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+
+[socks]
+listen_addr = "127.0.0.1:1080"       # Local SOCKS5 proxy port
+server_address = "myserver.com:8443" # Remote Nooshdaroo server
+auth_required = false
+
+[shapeshift]
+strategy = { type = "fixed", protocol = "https" }
+
+[transport]
+remote_public_key = "BASE64_PUBLIC_KEY_HERE"  # Server's public key
+```
+
+### 7.5 Key Generation
+
+**Generate New Keypair:**
+```bash
+# Default text format
+nooshdaroo genkey
+
+# Output:
+# Private key: FPuZ4N2FhEg6VF7PzgSup2+87gnhpiEG0/4/Fhw9akw=
+# Public key: +jIjeirgxTa1QGiujHnlMN2dr3Ks6xYzhnpuZ/E+NmY=
+
+# JSON format
+nooshdaroo genkey --format json
+
+# Output:
+# {"private_key":"FPuZ...akw=","public_key":"+jIj...NmY="}
+
+# Quiet mode (private key only)
+nooshdaroo genkey --format quiet
+
+# Output:
+# FPuZ4N2FhEg6VF7PzgSup2+87gnhpiEG0/4/Fhw9akw=
+```
+
+**Generate Configuration Files:**
+```bash
+nooshdaroo genconf \
+    --server-config server.toml \
+    --client-config client.toml \
+    --server-addr 0.0.0.0:8443 \
+    --client-addr 127.0.0.1:1080 \
+    --remote-server myserver.com:8443
+
+# With existing keys
+nooshdaroo genconf \
+    --server-config server.toml \
+    --client-config client.toml \
+    --server-private-key "FPuZ4N2FhEg6VF7PzgSup2+87gnhpiEG0/4/Fhw9akw=" \
+    --server-public-key "+jIjeirgxTa1QGiujHnlMN2dr3Ks6xYzhnpuZ/E+NmY=" \
+    --remote-server myserver.com:8443
+```
+
+### 7.6 Available Protocols
+
+**List All Protocols:**
+```bash
+nooshdaroo protocols
+```
+
+**Recommended Protocols by Use Case:**
+
+| Protocol | Port | Best For | DPI Evasion |
+|----------|------|----------|-------------|
+| https | 443 | General use | High |
+| https_google_com | 443 | Google SNI camouflage | High |
+| tls13_complete | 443 | High-security environments | Very High |
+| tls13 | 443 | TLS 1.3 compliance | High |
+| tls_simple | 443 | Maximum throughput | Medium |
+| dns | 53 | When HTTPS blocked | High |
+| dns_google_com | 443 | DNS over HTTPS | High |
+| ssh | 22 | SSH environments | Medium |
+
+**Protocol Selection in Config:**
+```toml
+# Single fixed protocol
+[shapeshift]
+strategy = { type = "fixed", protocol = "https" }
+
+# Rotate between protocols
+[shapeshift]
+strategy = { type = "time-based", interval = "10m",
+             sequence = ["https", "tls13_complete", "https_google_com"] }
+```
+
+### 7.7 Using the Proxy
+
+**SOCKS5 with curl:**
+```bash
+# Basic SOCKS5
+curl --socks5 127.0.0.1:1080 https://example.com
+
+# SOCKS5 with DNS resolution through proxy
+curl --socks5-hostname 127.0.0.1:1080 https://example.com
+# OR
+curl -x socks5h://127.0.0.1:1080 https://example.com
+```
+
+**HTTP CONNECT with curl:**
+```bash
+# If client started with --proxy-type http
+curl --proxy http://127.0.0.1:1080 https://example.com
+```
+
+**Firefox Configuration:**
+1. Settings → Network Settings → Manual proxy configuration
+2. SOCKS Host: `127.0.0.1`, Port: `1080`
+3. Select: SOCKS v5
+4. Check: Proxy DNS when using SOCKS v5
+
+**System-wide Proxy (macOS):**
+```bash
+networksetup -setsocksfirewallproxy "Wi-Fi" 127.0.0.1 1080
+networksetup -setsocksfirewallproxystate "Wi-Fi" on
+```
+
+**System-wide Proxy (Linux with proxychains):**
+```bash
+# Edit /etc/proxychains.conf
+# Add: socks5 127.0.0.1 1080
+
+proxychains firefox
+proxychains ssh user@remote
+```
+
+### 7.8 Local Testing Setup
+
+For testing both server and client on the same machine:
+
+**Server Config** (`server-local.toml`):
+```toml
+mode = "server"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+
+[socks]
+listen_addr = "127.0.0.1:10080"
+auth_required = false
+
+[shapeshift]
+strategy = { type = "fixed", protocol = "https" }
+
+[server]
+listen_addr = "127.0.0.1:18443"
+
+[transport]
+local_private_key = "FPuZ4N2FhEg6VF7PzgSup2+87gnhpiEG0/4/Fhw9akw="
+```
+
+**Client Config** (`client-local.toml`):
+```toml
+mode = "client"
+
+[encryption]
+cipher = "cha-cha20-poly1305"
+key_derivation = "argon2"
+
+[socks]
+listen_addr = "127.0.0.1:1080"
+server_address = "127.0.0.1:18443"
+auth_required = false
+
+[shapeshift]
+strategy = { type = "fixed", protocol = "https" }
+
+[transport]
+remote_public_key = "+jIjeirgxTa1QGiujHnlMN2dr3Ks6xYzhnpuZ/E+NmY="
+```
+
+**Run Test:**
+```bash
+# Terminal 1: Start server
+./target/release/nooshdaroo -c server-local.toml server
+
+# Terminal 2: Start client
+./target/release/nooshdaroo -c client-local.toml client
+
+# Terminal 3: Test connection
+curl -x socks5h://127.0.0.1:1080 https://example.com
+```
+
+**Benchmark Test URL:** `https://nooshdaroo.net/100MB`
+
+### 7.9 Production Server Deployment
 
 **Systemd Service** (`/etc/systemd/system/nooshdaroo.service`):
 ```ini
@@ -1107,7 +1446,7 @@ After=network.target
 Type=simple
 User=nooshdaroo
 WorkingDirectory=/opt/nooshdaroo
-ExecStart=/opt/nooshdaroo/nooshdaroo server --config /etc/nooshdaroo/server.toml
+ExecStart=/opt/nooshdaroo/nooshdaroo -c /etc/nooshdaroo/server.toml server
 Restart=always
 RestartSec=10
 
@@ -1122,151 +1461,103 @@ ReadWritePaths=/var/log/nooshdaroo
 WantedBy=multi-user.target
 ```
 
+**Installation:**
+```bash
+# Create system user
+sudo useradd -r -s /bin/false nooshdaroo
+
+# Create directories
+sudo mkdir -p /opt/nooshdaroo /etc/nooshdaroo /var/log/nooshdaroo
+
+# Copy binary
+sudo cp target/release/nooshdaroo /opt/nooshdaroo/
+
+# Copy protocols directory
+sudo cp -r protocols /opt/nooshdaroo/
+
+# Set permissions
+sudo chown -R nooshdaroo:nooshdaroo /opt/nooshdaroo /var/log/nooshdaroo
+
+# Install service
+sudo cp nooshdaroo.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable nooshdaroo
+sudo systemctl start nooshdaroo
+```
+
 **Firewall Rules:**
 ```bash
-# Allow Nooshdaroo server port
+# UFW
 sudo ufw allow 8443/tcp comment 'Nooshdaroo'
 
-# Or iptables
+# iptables
 sudo iptables -A INPUT -p tcp --dport 8443 -j ACCEPT
+
+# Multi-port mode
+sudo ufw allow 443/tcp
+sudo ufw allow 53/tcp
+sudo ufw allow 53/udp
+sudo ufw allow 22/tcp
 ```
 
-### 7.3 Client Deployment
+### 7.10 Multi-Port Server
 
-**Minimal Client Config:**
-```toml
-[client]
-bind_address = "127.0.0.1:1080"
-server_address = "myserver.com:8443"
+For maximum flexibility, run the server on multiple ports:
 
-[transport]
-pattern = "nk"
-remote_public_key = "SERVER_PUBLIC_KEY_HERE"
-
-[shapeshift.strategy]
-type = "fixed"
-protocol = "https"
-```
-
-**Advanced Client Config:**
-```toml
-[client]
-bind_address = "127.0.0.1:1080"
-server_address = "myserver.com:8443"
-proxy_type = "socks5"
-
-[transport]
-pattern = "nk"
-remote_public_key = "SERVER_PUBLIC_KEY_HERE"
-
-[shapeshift.strategy]
-type = "adaptive"
-initial_protocol = "https"
-
-[traffic]
-application_profile = "zoom"
-enabled = true
-
-[bandwidth]
-adaptive_quality = true
-initial_quality = "high"
-auto_adapt = true
-
-protocol_dir = "protocols"
-```
-
-**Browser Configuration (Firefox):**
-1. Settings → Network Settings
-2. Manual proxy configuration
-3. SOCKS Host: `127.0.0.1`
-4. Port: `1080`
-5. SOCKS v5: ✓
-6. Proxy DNS when using SOCKS v5: ✓
-
-**Using Preset Profiles:**
 ```bash
-# Corporate network
-nooshdaroo client --profile corporate --server server.com:8443
-
-# Airport/hotel WiFi
-nooshdaroo client --profile airport --server server.com:8443
-
-# China Great Firewall
-nooshdaroo client --profile china --server server.com:8443
-
-# Iran
-nooshdaroo client --profile iran --server server.com:8443
-
-# Russia
-nooshdaroo client --profile russia --server server.com:8443
+nooshdaroo -c server.toml server --multi-port --max-ports 20
 ```
 
-### 7.4 Multi-Port Server
+This listens on standard protocol ports (443, 53, 22, 80, 8080, etc.) to maximize connectivity options.
 
-**Enable Multi-Port Mode:**
-```bash
-nooshdaroo server --multi-port --max-ports 20
-```
+### 7.11 Path Testing
 
-**Configuration:**
-```toml
-[multiport]
-bind_addr = "0.0.0.0"
-max_ports = 20
-use_standard_ports = true
-use_random_ports = true
+Test all protocol/port combinations to find the best path:
 
-[multiport.protocol_ports]
-https = [443, 8443]
-dns = [53]
-ssh = [22, 2222]
-http = [80, 8080, 8000]
-```
-
-**Benefits:**
-- Protocol-port alignment reduces suspicion
-- Redundancy if specific ports blocked
-- Multiple entry points
-
-### 7.5 Path Testing
-
-**Test All Available Paths:**
 ```bash
 nooshdaroo test-paths --server myserver.com
-
-# Output (JSON):
-{
-  "tested_paths": 15,
-  "successful": 12,
-  "best_path": {
-    "address": "myserver.com:53",
-    "protocol": "dns",
-    "score": 0.92,
-    "latency_ms": 23,
-    "detection_risk": 0.08
-  },
-  "results": [
-    {
-      "address": "myserver.com:443",
-      "protocol": "https",
-      "score": 0.87,
-      "latency_ms": 31,
-      "success": true
-    },
-    ...
-  ]
-}
 ```
 
-**Scoring Formula:**
-```
-score = (stealth * 0.5) + (reliability * 0.2) + (latency * 0.2) + (throughput * 0.1)
+This tests connectivity through different protocols and ports, scoring each path based on:
+- Stealth (50%): Detection risk
+- Reliability (20%): Packet loss rate
+- Latency (20%): Round-trip time
+- Throughput (10%): Bandwidth
 
-where:
-  stealth = 1.0 - detection_risk
-  reliability = 1.0 - packet_loss_rate
-  latency = 1.0 - (measured_rtt / max_acceptable_rtt)
-  throughput = min(measured_bandwidth / target_bandwidth, 1.0)
+### 7.12 Troubleshooting
+
+**Connection Refused:**
+```bash
+# Check server is running
+ps aux | grep nooshdaroo
+
+# Check port is open
+netstat -tlnp | grep 8443
+
+# Test connectivity
+nc -zv server.com 8443
+```
+
+**Handshake Failure:**
+- Verify `remote_public_key` in client matches server's public key
+- Ensure `local_private_key` in server is correctly formatted
+- Check both use the same protocol
+
+**Slow Speeds:**
+- Try different protocols (tls13_complete often fastest)
+- Check for ISP throttling
+- Test baseline: `curl -o /dev/null https://nooshdaroo.net/100MB`
+
+**Verbose Logging:**
+```bash
+# Info level
+nooshdaroo -v -c config.toml client
+
+# Debug level
+nooshdaroo -vv -c config.toml client
+
+# Trace level (very verbose)
+nooshdaroo -vvv -c config.toml client
 ```
 
 ---
@@ -1787,6 +2078,23 @@ Options:
   - Userspace implementation: ~4-6%
 - **Performance context**: WireGuard has lower overhead (5-10%) but operates in kernel space and lacks protocol obfuscation. Nooshdaroo's 22% overhead is acceptable given it provides full DPI evasion with nDPI-validated protocol emulation.
 - **IPv6 support**: Tested and verified - handles both IPv4 and IPv6 destinations with bracket notation
+
+**Protocol Performance Comparison** (November 28, 2025):
+
+Test configuration: 100MB file download from `https://nooshdaroo.net/100MB`, server/client on 127.0.0.1
+
+| Protocol | Speed (MB/s) | % of Baseline | DPI Evasion | Recommended Use |
+|----------|-------------|---------------|-------------|-----------------|
+| tls13_complete | 20.03 | 50% | Very High | High-security environments |
+| https | 19.03 | 47% | High | Standard HTTPS environments |
+| tls13 | 17.18 | 43% | High | Full TLS 1.3 compliance |
+| https_google_com | 16.57 | 41% | High | General use, Google traffic emulation |
+| tls_simple | 15.33 | 38% | Medium | High throughput, lower detection risk |
+| ssh | 0 | N/A | Medium | Handshake issues - under investigation |
+
+**Baseline**: 40.24 MB/s direct connection (no proxy)
+
+*Note: All protocols use identical Noise Protocol encryption (ChaCha20-Poly1305). Performance differences stem from protocol wrapper complexity. Test URL for benchmarks: `https://nooshdaroo.net/100MB`*
 
 ### 10.2 Latency Analysis
 

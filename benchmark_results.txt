@@ -1,0 +1,54 @@
+=== Nooshdaroo Protocol Benchmark ===
+Date: Fri Nov 28 12:47:39 PST 2025
+Test URL: https://nooshdaroo.net/100MB
+
+=== Baseline (Direct Connection) ===
+  Run 1: 80.93 MB/s
+  Run 2: 17.65 MB/s
+  Run 3: 22.14 MB/s
+Baseline Average: 40.24 MB/s
+
+=== Protocol Tests ===
+Testing protocol: https
+  Running 3 downloads...
+    Run 1: 17.96 MB/s
+    Run 2: 18.16 MB/s
+    Run 3: 20.97 MB/s
+  Average: 19.03 MB/s
+
+Testing protocol: https_google_com
+  Running 3 downloads...
+    Run 1: 15.98 MB/s
+    Run 2: 18.05 MB/s
+    Run 3: 15.67 MB/s
+  Average: 16.57 MB/s
+
+Testing protocol: tls_simple
+  Running 3 downloads...
+    Run 1: 15.09 MB/s
+    Run 2: 13.29 MB/s
+    Run 3: 17.63 MB/s
+  Average: 15.33 MB/s
+
+Testing protocol: tls13_complete
+  Running 3 downloads...
+    Run 1: 16.16 MB/s
+    Run 2: 29.06 MB/s
+    Run 3: 14.86 MB/s
+  Average: 20.03 MB/s
+
+Testing protocol: ssh
+  Running 3 downloads...
+    Run 1: 0 MB/s
+    Run 2: 0 MB/s
+    Run 3: 0 MB/s
+  Average: 0 MB/s
+
+Testing protocol: tls13
+  Running 3 downloads...
+    Run 1: 20.39 MB/s
+    Run 2: 16.92 MB/s
+    Run 3: 14.22 MB/s
+  Average: 17.18 MB/s
+
+=== Benchmark Complete ===
