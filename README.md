@@ -6,18 +6,12 @@ Nooshdaroo (نوشدارو, Persian for "antidote") disguises encrypted SOCKS5 t
 
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
-[![nDPI Validated](https://img.shields.io/badge/nDPI%20Validated-Google%20Protocol-success.svg)](NDPI_BASELINE_SUCCESS.md)
-[![DPI Confidence](https://img.shields.io/badge/DPI%20Confidence-Validated-brightgreen.svg)](NDPI_BASELINE_SUCCESS.md)
+[![nDPI Validated](https://img.shields.io/badge/nDPI%20Validated-Google%20Protocol-success.svg)](#security)
+[![DPI Confidence](https://img.shields.io/badge/DPI%20Confidence-Validated-brightgreen.svg)](#security)
 
 ## 🌐 Website
 
 **→ [https://nooshdaroo.net/](https://nooshdaroo.net/)** - Download signed binaries, verify GPG signatures, and learn more about the antidote to censorship.
-
-## 📘 Complete Documentation
-
-**→ [NOOSHDAROO TECHNICAL REFERENCE](NOOSHDAROO_TECHNICAL_REFERENCE.md)** - Everything you need to know about Nooshdaroo: architecture, deployment, API reference, and configuration.
-
-**→ [QUICK REFERENCE](QUICK_REFERENCE.md)** - One-page command cheatsheet and common operations.
 
 ---
 
@@ -158,15 +152,6 @@ For production use cases requiring high security guarantees, consider well-estab
 
 ---
 
-## Documentation
-
-- **[NOOSHDAROO_TECHNICAL_REFERENCE.md](NOOSHDAROO_TECHNICAL_REFERENCE.md)** - Complete technical documentation
-- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Command cheatsheet
-- **[CHANGELOG.md](CHANGELOG.md)** - Version history
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
-
----
-
 ## Use Cases
 
 ### 1. Censorship Circumvention
@@ -211,7 +196,7 @@ Encrypted tunneling with forward secrecy for sensitive communications.
 - OpenVPN: 15-25% overhead (observable patterns, vulnerable to DPI)
 - **Nooshdaroo: 22% overhead** (protocol obfuscation, nDPI validated as legitimate traffic)
 
-Performance varies based on network conditions, hardware, protocol selection, and quality settings. See [NOOSHDAROO_TECHNICAL_REFERENCE.md](NOOSHDAROO_TECHNICAL_REFERENCE.md) for detailed benchmarks and methodology.
+Performance varies based on network conditions, hardware, protocol selection, and quality settings.
 
 ---
 
@@ -228,8 +213,6 @@ Performance varies based on network conditions, hardware, protocol selection, an
 - Requires a server outside the censored network
 - Strong adversaries with unlimited resources may still detect/block
 - Not a replacement for end-to-end encryption (use HTTPS/TLS)
-
-See [Security Analysis](NOOSHDAROO_TECHNICAL_REFERENCE.md#11-security-analysis) for threat model and detailed security properties.
 
 ---
 
@@ -276,7 +259,7 @@ Contributions welcome! Areas of interest:
 4. Testing (real-world censorship testing)
 5. Documentation (user guides, tutorials)
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+Open an issue or submit a pull request on GitHub.
 
 ---
 
