@@ -13,6 +13,10 @@ Nooshdaroo (نوشدارو, Persian for "antidote") disguises encrypted SOCKS5 t
 
 **→ [https://nooshdaroo.net/](https://nooshdaroo.net/)** - Download signed binaries, verify GPG signatures, and learn more about the antidote to censorship.
 
+## Technical Documentation
+
+**→ [NOOSHDAROO TECHNICAL REFERENCE](NOOSHDAROO_TECHNICAL_REFERENCE.md)** - Complete technical documentation: architecture, deployment, API reference, configuration, and security analysis.
+
 ---
 
 ## Quick Start
