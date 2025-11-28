@@ -7,12 +7,11 @@ password = "test-local-dns"
 
 [shapeshift.strategy]
 type = "fixed"
-protocol = "dns-google"
+protocol = "dns-udp-tunnel"
 
 [socks]
 listen_addr = "127.0.0.1:10080"
 server_address = "127.0.0.1:15353"
-transport = "udp"
 auth_required = false
 
 [transport]

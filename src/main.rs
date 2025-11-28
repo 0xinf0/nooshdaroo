@@ -973,9 +973,29 @@ async fn run_server(
     info!("Protocols loaded: ready to receive shape-shifted traffic");
     info!("Server protocol: {}", protocol_id.as_str());
 
-    // Accept and handle connections
-    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    // Prepare config Arc for both TCP and UDP servers
     let config_arc = Arc::new(config);
+
+    // Check if we need UDP listener for DNS tunneling
+    let needs_udp = protocol_id.as_str() == "dns-udp-tunnel"
+        || protocol_id.as_str() == "dns_udp_tunnel";
+
+    if needs_udp {
+        let udp_addr = bind_addr.parse()?;
+        let noise_cfg = noise_config.clone();
+        let cfg = config_arc.clone();
+
+        info!("Starting UDP DNS server on {} for dns-udp-tunnel protocol", bind_addr);
+
+        // For DNS tunneling, we ONLY use UDP - no TCP listener needed
+        // The UDP server handles everything
+        return nooshdaroo::proxy::run_udp_dns_server(udp_addr, noise_cfg, cfg)
+            .await
+            .map_err(|e| anyhow::anyhow!("UDP DNS server error: {}", e));
+    }
+
+    // Accept and handle connections (TCP mode for non-DNS protocols)
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
 
     loop {
         match listener.accept().await {

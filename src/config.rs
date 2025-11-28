@@ -79,8 +79,9 @@ pub struct EncryptionConfig {
     /// Key derivation function
     pub key_derivation: KdfType,
 
-    /// Password for key derivation
-    pub password: String,
+    /// Password for key derivation (optional, not currently used by Noise Protocol)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
 
     /// Optional salt
     pub salt: Option<String>,
@@ -91,7 +92,7 @@ impl Default for EncryptionConfig {
         Self {
             cipher: CipherType::ChaCha20Poly1305,
             key_derivation: KdfType::Argon2,
-            password: String::new(),
+            password: None,
             salt: None,
         }
     }
@@ -309,11 +310,6 @@ impl NooshdarooConfig {
 
     /// Validate configuration
     pub fn validate(&self) -> Result<(), String> {
-        // Check password is set for encryption
-        if self.encryption.password.is_empty() {
-            return Err("Encryption password must be set".to_string());
-        }
-
         // Check server config in server mode
         if self.mode == NooshdarooMode::Server && self.server.is_none() {
             return Err("Server configuration required in server mode".to_string());

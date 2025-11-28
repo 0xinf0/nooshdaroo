@@ -3,20 +3,20 @@ mode = "client"
 [encryption]
 cipher = "cha-cha20-poly1305"
 key_derivation = "argon2"
-password = "nooshdaroo-client-secret"
+password = "nooshdaroo-secret-shared"
 
 [shapeshift.strategy]
 type = "fixed"
-protocol = "dns"
+protocol = "dns-udp-tunnel"
 
 [socks]
 listen_addr = "127.0.0.1:1080"
-server_address = "23.128.36.102:53"
+server_address = "127.0.0.1:15353"
 auth_required = false
 
 [transport]
 pattern = "nk"
-remote_public_key = "4wIWM/RDNNY1GhBqK3eLgFBznWzq7RIhaPwhUy9Cpn8="
+remote_public_key = "oepuIRjwxSNssdriX4KMUJEmAHZ7eemsRD8+LzuEaVY="
 
 [detection]
 enable_fingerprint_randomization = false

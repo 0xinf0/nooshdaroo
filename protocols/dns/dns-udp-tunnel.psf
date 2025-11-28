@@ -10,6 +10,42 @@
 
 @SEGMENT.FORMATS
 
+  // DNS Tunnel Handshake Query - Fixed size for Noise handshake
+  DEFINE DnsTunnelHandshakeQuery
+    // Standard DNS header (12 bytes)
+    { NAME: transaction_id ; TYPE: [u8; 2] },
+    { NAME: flags          ; TYPE: u16 },      // 0x0100 = standard query
+    { NAME: qdcount        ; TYPE: u16 },      // 0x0001 = 1 question
+    { NAME: ancount        ; TYPE: u16 },      // 0x0000 = 0 answers
+    { NAME: nscount        ; TYPE: u16 },      // 0x0000 = 0 authority
+    { NAME: arcount        ; TYPE: u16 },      // 0x0000 = 0 additional
+
+    // Question section - Fixed-size payload for handshake
+    { NAME: encoded_qname  ; TYPE: [u8; 64] }, // Fixed 64 bytes for handshake
+    { NAME: qtype          ; TYPE: u16 },      // 0x0001 = A record
+    { NAME: qclass         ; TYPE: u16 };      // 0x0001 = IN class
+
+  // DNS Tunnel Handshake Response - Fixed size for Noise handshake
+  DEFINE DnsTunnelHandshakeResponse
+    // Standard DNS header (12 bytes)
+    { NAME: transaction_id ; TYPE: [u8; 2] },
+    { NAME: flags          ; TYPE: u16 },      // 0x8180 = standard response
+    { NAME: qdcount        ; TYPE: u16 },      // 0x0001 = 1 question
+    { NAME: ancount        ; TYPE: u16 },      // 0x0001 = 1 answer
+    { NAME: nscount        ; TYPE: u16 },      // 0x0000
+    { NAME: arcount        ; TYPE: u16 },      // 0x0000
+
+    // Echo back question - Fixed size
+    { NAME: question_echo  ; TYPE: [u8; 68] }, // 64 + 4 bytes (qtype + qclass)
+
+    // Answer section - TXT record with encoded payload
+    { NAME: answer_name    ; TYPE: u16 },      // 0xc00c = pointer to question
+    { NAME: answer_type    ; TYPE: u16 },      // 0x0010 = TXT record
+    { NAME: answer_class   ; TYPE: u16 },      // 0x0001 = IN
+    { NAME: ttl            ; TYPE: u32 },      // Time to live
+    { NAME: rdlength       ; TYPE: u16 },      // Length of RDATA (fixed at 64)
+    { NAME: txt_data       ; TYPE: [u8; 64] };  // Fixed 64 bytes for handshake
+
   // DNS Tunnel Query - Client encodes data in subdomain labels
   DEFINE DnsTunnelQuery
     // Standard DNS header (12 bytes)
@@ -23,7 +59,7 @@
     // Question section - QNAME encoded with payload
     // Format: <hex-label1>-<hex-label2>-<hex-label3>.tunnel.example.com
     // Each label is hex-encoded chunk of encrypted data
-    { NAME: encoded_qname  ; TYPE: [u8; encoded_qname.size_of] },
+    { NAME: encoded_qname  ; TYPE: [u8; variable] },
     { NAME: qtype          ; TYPE: u16 },      // 0x0001 = A record
     { NAME: qclass         ; TYPE: u16 };      // 0x0001 = IN class
 
@@ -38,7 +74,7 @@
     { NAME: arcount        ; TYPE: u16 },      // 0x0000
 
     // Echo back question
-    { NAME: question_echo  ; TYPE: [u8; question_echo.size_of] },
+    { NAME: question_echo  ; TYPE: [u8; variable] },
 
     // Answer section - TXT record with encoded payload
     { NAME: answer_name    ; TYPE: u16 },      // 0xc00c = pointer to question
@@ -46,11 +82,37 @@
     { NAME: answer_class   ; TYPE: u16 },      // 0x0001 = IN
     { NAME: ttl            ; TYPE: u32 },      // Time to live
     { NAME: rdlength       ; TYPE: u16 },      // Length of RDATA
-    { NAME: txt_data       ; TYPE: [u8; rdlength.size_of] };  // Encoded payload
+    { NAME: txt_data       ; TYPE: [u8; rdlength] };  // Encoded payload
 
 @SEGMENT.SEMANTICS
 
-  // Query semantics
+  // Handshake query semantics (fixed size)
+  { FORMAT: DnsTunnelHandshakeQuery; FIELD: transaction_id; SEMANTIC: RANDOM };
+  { FORMAT: DnsTunnelHandshakeQuery; FIELD: flags;          SEMANTIC: FIXED_VALUE(0x0100) };
+  { FORMAT: DnsTunnelHandshakeQuery; FIELD: qdcount;        SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsTunnelHandshakeQuery; FIELD: ancount;        SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsTunnelHandshakeQuery; FIELD: nscount;        SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsTunnelHandshakeQuery; FIELD: arcount;        SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsTunnelHandshakeQuery; FIELD: encoded_qname;  SEMANTIC: PAYLOAD };
+  { FORMAT: DnsTunnelHandshakeQuery; FIELD: qtype;          SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsTunnelHandshakeQuery; FIELD: qclass;         SEMANTIC: FIXED_VALUE(0x0001) };
+
+  // Handshake response semantics (fixed size)
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: transaction_id; SEMANTIC: RANDOM };
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: flags;          SEMANTIC: FIXED_VALUE(0x8180) };
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: qdcount;        SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: ancount;        SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: nscount;        SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: arcount;        SEMANTIC: FIXED_VALUE(0x0000) };
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: question_echo;  SEMANTIC: PAYLOAD };  // Copy from query
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: answer_name;    SEMANTIC: FIXED_VALUE(0xc00c) };
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: answer_type;    SEMANTIC: FIXED_VALUE(0x0010) };
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: answer_class;   SEMANTIC: FIXED_VALUE(0x0001) };
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: ttl;            SEMANTIC: FIXED_VALUE(0x0000003c) };
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: rdlength;       SEMANTIC: FIXED_VALUE(0x0040) };  // 64 bytes
+  { FORMAT: DnsTunnelHandshakeResponse; FIELD: txt_data;       SEMANTIC: PAYLOAD };
+
+  // Query semantics (variable size for data)
   { FORMAT: DnsTunnelQuery; FIELD: transaction_id; SEMANTIC: RANDOM };
   { FORMAT: DnsTunnelQuery; FIELD: flags;          SEMANTIC: FIXED_VALUE(0x0100) };
   { FORMAT: DnsTunnelQuery; FIELD: qdcount;        SEMANTIC: FIXED_VALUE(0x0001) };
@@ -65,7 +127,7 @@
   { FORMAT: DnsTunnelQuery; FIELD: qtype;          SEMANTIC: FIXED_VALUE(0x0001) };
   { FORMAT: DnsTunnelQuery; FIELD: qclass;         SEMANTIC: FIXED_VALUE(0x0001) };
 
-  // Response semantics
+  // Response semantics (variable size for data)
   { FORMAT: DnsTunnelResponse; FIELD: transaction_id; SEMANTIC: RANDOM };
   { FORMAT: DnsTunnelResponse; FIELD: flags;          SEMANTIC: FIXED_VALUE(0x8180) };
   { FORMAT: DnsTunnelResponse; FIELD: qdcount;        SEMANTIC: FIXED_VALUE(0x0001) };
@@ -86,7 +148,12 @@
 
 @SEGMENT.SEQUENCE
 
-  // UDP-based communication - no handshake, just data phase
+  // UDP-based communication with Noise handshake support
+  // Handshake phase uses fixed-size DNS formats
+  { ROLE: CLIENT; PHASE: HANDSHAKE; FORMAT: DnsTunnelHandshakeQuery };
+  { ROLE: SERVER; PHASE: HANDSHAKE; FORMAT: DnsTunnelHandshakeResponse };
+
+  // Data phase uses variable-size DNS formats
   { ROLE: CLIENT; PHASE: DATA; FORMAT: DnsTunnelQuery };
   { ROLE: SERVER; PHASE: DATA; FORMAT: DnsTunnelResponse };
 

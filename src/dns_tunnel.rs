@@ -25,10 +25,9 @@ fn get_tunnel_domain(seed: u8) -> &'static str {
 
 /// Encode payload data into a valid DNS QNAME
 ///
-/// Takes encrypted data and encodes it as base32 in subdomain labels:
-/// Base32 expansion is 1.6x (vs 2x for hex) = ~25% more efficient
+/// Takes encrypted data and encodes it as hex in subdomain labels:
 /// Input: [0xab, 0x3d, 0x01, 0xf7, 0xc9, 0xe2], seed: 0
-/// Output: \x10vm6qd7z4te4\x06google\x03com\x00
+/// Output: \x06ab3d01\x06f7c9e2\x06google\x03com\x00
 ///
 /// Each label is:
 /// - Length byte (1-63)
@@ -132,8 +131,8 @@ pub fn build_dns_query(payload: &[u8], transaction_id: u16) -> Vec<u8> {
     packet.extend_from_slice(&[0x00, 0x00]); // NSCOUNT: 0 authority
     packet.extend_from_slice(&[0x00, 0x00]); // ARCOUNT: 0 additional
 
-    // Question section
-    let qname = encode_qname(payload);
+    // Question section (use real domains: challenges.cloudflare.com or www.google.com)
+    let qname = encode_qname(payload, transaction_id);
     packet.extend_from_slice(&qname);
 
     // QTYPE: A record (0x0001)
@@ -315,6 +314,11 @@ pub fn parse_dns_query(packet: &[u8]) -> Result<(u16, Vec<u8>), String> {
 
     while qname_end < packet.len() && packet[qname_end] != 0 {
         let len = packet[qname_end] as usize;
+        // Validate label length doesn't exceed packet bounds
+        if qname_end + 1 + len > packet.len() {
+            return Err(format!("Invalid QNAME: label at pos {} claims length {} but only {} bytes remain",
+                qname_end, len, packet.len() - qname_end - 1));
+        }
         qname_end += 1 + len;
     }
     qname_end += 1; // Include null terminator

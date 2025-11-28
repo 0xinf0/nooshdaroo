@@ -538,6 +538,7 @@ impl NoiseTransport {
         }
     }
 
+
     /// Read length-prefixed message (2-byte big-endian length + payload)
     async fn read_message<'a, S>(stream: &mut S, buf: &'a mut [u8]) -> Result<&'a [u8]>
     where
@@ -609,20 +610,45 @@ impl NoiseTransport {
     }
 
     /// Write raw bytes to stream with length prefix (for protocol wrapper)
-    pub async fn write_raw<S>(&self, stream: &mut S, data: &[u8]) -> Result<()>
+    /// Write raw encrypted data without length prefix (for UDP/DNS transports)
+    pub async fn write_raw<S>(&mut self, stream: &mut S, data: &[u8]) -> Result<()>
     where
         S: AsyncWrite + Unpin,
     {
-        Self::write_message(stream, data).await
+        if data.len() > MAX_MESSAGE_SIZE {
+            return Err(anyhow!("Message too large: {} > {}", data.len(), MAX_MESSAGE_SIZE));
+        }
+
+        // Encrypt with Noise
+        let len = self.transport.write_message(data, &mut self.write_buffer)?;
+        let noise_payload = &self.write_buffer[..len];
+
+        // Write raw encrypted data WITHOUT length prefix (for UDP/DNS)
+        stream.write_all(noise_payload).await?;
+        stream.flush().await?;
+
+        Ok(())
     }
 
     /// Read raw bytes from stream with length prefix (for protocol wrapper)
+    /// Read and decrypt raw data without length prefix (for UDP/DNS transports)
     pub async fn read_raw<S>(&mut self, stream: &mut S) -> Result<Vec<u8>>
     where
         S: AsyncRead + Unpin,
     {
-        let data = Self::read_message(stream, &mut self.read_buffer).await?;
-        Ok(data.to_vec())
+        // Read raw encrypted data from stream (no length prefix for UDP/DNS)
+        let mut buf = vec![0u8; MAX_MESSAGE_SIZE + 16]; // Extra space for Noise overhead
+        let n = stream.read(&mut buf).await?;
+
+        if n == 0 {
+            return Err(anyhow!("Connection closed"));
+        }
+
+        let encrypted = &buf[..n];
+
+        // Decrypt with Noise
+        let len = self.transport.read_message(encrypted, &mut self.write_buffer)?;
+        Ok(self.write_buffer[..len].to_vec())
     }
 
     /// Check if transport is in valid state

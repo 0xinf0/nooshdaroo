@@ -1,20 +1,23 @@
-mode = "server"
+mode = "client"
 
 [encryption]
 cipher = "cha-cha20-poly1305"
 key_derivation = "argon2"
-password = "test-local-dns"
 
 [shapeshift.strategy]
 type = "fixed"
 protocol = "dns-udp-tunnel"
 
-[server]
-listen_addr = "127.0.0.1:15353"
+[socks]
+listen_addr = "127.0.0.1:10080"
+# REPLACE WITH YOUR SERVER'S PUBLIC IP:
+# Example: server_address = "203.0.113.45:53"
+server_address = "YOUR_SERVER_IP:53"
+auth_required = false
 
 [transport]
 pattern = "nk"
-local_private_key = "5cxpzw1sBSmGFXVzUT6xV4gh8hlhlSVwWB8W1wSIMRI="
+remote_public_key = "lvRQB8LXLBoU4eKYBTd+/JHhGT9Mt7rwerMhY0uHdHU="
 
 [detection]
 enable_fingerprint_randomization = false

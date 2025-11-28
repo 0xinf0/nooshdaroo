@@ -78,6 +78,18 @@ quinn-proto = "0.11"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 ring = "0.17"
 
+# KCP reliability layer for DNS/ICMP transports
+kcp = "0.6"
+
+# QUIC transport
+quinn = "0.11"
+rustls = "0.23"
+rustls-native-certs = "0.8"
+rcgen = "0.13"
+
+# WebRTC transport
+webrtc = "0.11"
+
 [build-dependencies]
 chrono = "0.4"
 
