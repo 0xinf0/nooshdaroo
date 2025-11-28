@@ -1,6 +1,6 @@
 [package]
 name = "nooshdaroo"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 authors = ["Sina Rabbani"]
 description = "Protocol Shape-Shifting SOCKS Proxy - Dynamic protocol emulation for encrypted proxy traffic"
