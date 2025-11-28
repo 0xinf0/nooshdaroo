@@ -12,21 +12,30 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{RwLock, mpsc, oneshot, Mutex};
 use crate::dns_tunnel::{build_dns_query, build_dns_response, parse_dns_query, parse_dns_response};
 
 /// Session timeout for UDP tunnel (60 seconds)
 const SESSION_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Maximum DNS query payload size (conservative estimate accounting for encoding overhead)
-/// DNS QNAME limit is 253 bytes, after base domain and hex encoding we get ~100 bytes of raw data
-const MAX_DNS_QUERY_PAYLOAD: usize = 100;
+/// Maximum DNS query payload size
+/// DNS QNAME limit is 253 bytes total. After hex encoding (2x) and base domain (~15 bytes),
+/// we can fit approximately 115-119 bytes of raw data. Using 115 for reliability.
+const MAX_DNS_QUERY_PAYLOAD: usize = 115;
 
-/// Maximum DNS response payload size (accounting for 2x hex encoding + DNS overhead to stay under 512 bytes)
+/// Maximum DNS response payload size
+/// Uses multi-TXT record responses with DPI-evading decoy record:
+/// - 512 bytes UDP limit - 12 header - 20 question - ~65 decoy = ~415 for data TXT records
+/// - Each data TXT: 12 overhead + 1 length + data (first has +2 "v=" marker)
+/// - Conservative value of 180 bytes = 360 hex chars + overhead = ~460 bytes (safe margin)
+/// Note: build_dns_response dynamically packs what fits, but we use conservative limit
 const MAX_DNS_RESPONSE_PAYLOAD: usize = 180;
 
 /// Maximum UDP packet size
 const MAX_UDP_PACKET_SIZE: usize = 512; // DNS standard size
+
+/// Number of concurrent POLL queries for pipelining (improves throughput by reducing latency impact)
+const PIPELINE_DEPTH: usize = 3;
 
 /// Session ID type (16-bit identifier)
 pub type SessionId = u16;
@@ -503,6 +512,148 @@ impl DnsUdpTunnelClient {
         }
 
         fragments
+    }
+}
+
+/// Pipelined UDP DNS Tunnel Client - sends multiple queries concurrently
+/// This reduces the impact of network latency by keeping multiple requests in flight
+pub struct DnsUdpTunnelClientPipelined {
+    socket: Arc<UdpSocket>,
+    session_id: SessionId,
+    next_transaction_id: Arc<Mutex<u16>>,
+    /// Pending responses keyed by transaction_id
+    pending: Arc<Mutex<HashMap<u16, oneshot::Sender<Vec<u8>>>>>,
+}
+
+impl DnsUdpTunnelClientPipelined {
+    /// Create a new pipelined client
+    pub async fn new(server_addr: SocketAddr, session_id: SessionId) -> Result<Self, String> {
+        let socket = UdpSocket::bind("0.0.0.0:0")
+            .await
+            .map_err(|e| format!("Failed to bind UDP socket: {}", e))?;
+
+        socket
+            .connect(server_addr)
+            .await
+            .map_err(|e| format!("Failed to connect to {}: {}", server_addr, e))?;
+
+        Ok(Self {
+            socket: Arc::new(socket),
+            session_id,
+            next_transaction_id: Arc::new(Mutex::new(0)),
+            pending: Arc::new(Mutex::new(HashMap::new())),
+        })
+    }
+
+    /// Start the background receiver task
+    pub fn start_receiver(&self) -> tokio::task::JoinHandle<()> {
+        let socket = self.socket.clone();
+        let pending = self.pending.clone();
+        let session_id = self.session_id;
+
+        tokio::spawn(async move {
+            let mut buf = vec![0u8; MAX_UDP_PACKET_SIZE];
+            loop {
+                match socket.recv(&mut buf).await {
+                    Ok(len) => {
+                        let response_packet = &buf[..len];
+
+                        // Extract transaction ID from DNS response header
+                        if len >= 2 {
+                            let transaction_id = u16::from_be_bytes([response_packet[0], response_packet[1]]);
+
+                            // Parse the response
+                            if let Ok(payload) = parse_dns_response(response_packet) {
+                                // Check if we have a pending request for this transaction
+                                let mut pending_lock = pending.lock().await;
+                                if let Some(sender) = pending_lock.remove(&transaction_id) {
+                                    // Verify session_id in payload header
+                                    if payload.len() >= DnsTunnelHeader::SIZE {
+                                        if let Ok(header) = DnsTunnelHeader::decode(&payload) {
+                                            if header.session_id == session_id {
+                                                let _ = sender.send(payload);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::debug!("Receiver error: {}", e);
+                        break;
+                    }
+                }
+            }
+        })
+    }
+
+    /// Send data and receive response (pipelined)
+    pub async fn send_and_receive(&self, payload: Vec<u8>) -> Result<Vec<u8>, String> {
+        // Fragment payload
+        let fragments = DnsUdpTunnelClient::fragment_payload(self.session_id, &payload);
+
+        // Get unique transaction ID
+        let transaction_id = {
+            let mut tid = self.next_transaction_id.lock().await;
+            let current = *tid;
+            *tid = tid.wrapping_add(1);
+            current
+        };
+
+        // Create response channel
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut pending = self.pending.lock().await;
+            pending.insert(transaction_id, tx);
+        }
+
+        // Send all fragments
+        for frag_data in fragments.iter() {
+            let query_packet = build_dns_query(frag_data, transaction_id);
+            self.socket
+                .send(&query_packet)
+                .await
+                .map_err(|e| format!("Failed to send DNS query: {}", e))?;
+        }
+
+        // Wait for response with timeout
+        match tokio::time::timeout(Duration::from_secs(5), rx).await {
+            Ok(Ok(response_payload)) => {
+                // Reassemble if needed (for now, assume single fragment response)
+                if response_payload.len() > DnsTunnelHeader::SIZE {
+                    Ok(response_payload[DnsTunnelHeader::SIZE..].to_vec())
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+            Ok(Err(_)) => Err("Response channel closed".to_string()),
+            Err(_) => {
+                // Remove pending request on timeout
+                let mut pending = self.pending.lock().await;
+                pending.remove(&transaction_id);
+                Err("Timeout waiting for response".to_string())
+            }
+        }
+    }
+
+    /// Send multiple POLL requests in parallel and collect all responses
+    /// This is the key optimization - we send N polls at once and collect responses
+    pub async fn poll_parallel(&self, count: usize) -> Vec<Vec<u8>> {
+        let mut futures = Vec::new();
+
+        for _ in 0..count {
+            let poll_req = vec![0x03]; // POLL command
+            futures.push(self.send_and_receive(poll_req));
+        }
+
+        let results = futures::future::join_all(futures).await;
+
+        results
+            .into_iter()
+            .filter_map(|r| r.ok())
+            .filter(|data| !data.is_empty() && data != b"")
+            .collect()
     }
 }
 

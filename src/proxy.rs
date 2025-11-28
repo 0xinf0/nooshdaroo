@@ -153,6 +153,8 @@ impl UnifiedProxyListener {
 
         loop {
             let (socket, peer_addr) = listener.accept().await?;
+            // Enable TCP_NODELAY on client socket to prevent buffering delays (critical for HTTP/2)
+            socket.set_nodelay(true)?;
             log::debug!("Accepted TCP connection from {}", peer_addr);
 
             let proxy_types = self.proxy_types.clone();

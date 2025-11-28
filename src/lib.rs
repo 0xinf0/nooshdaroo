@@ -71,6 +71,7 @@ pub mod config;
 pub mod dns_transport;
 pub mod dns_tunnel;
 pub mod dns_udp_tunnel;
+pub use dns_udp_tunnel::{DnsUdpTunnelServer, DnsUdpTunnelClient, DnsUdpTunnelClientPipelined};
 pub mod reliable_transport;
 pub mod embedded_keys;
 pub mod json_logger;
@@ -79,6 +80,7 @@ pub mod mobile;
 pub mod multiport_server;
 pub mod netflow_evasion;
 pub mod noise_transport;
+pub mod nquic;
 pub mod profiles;
 pub mod protocol;
 pub mod proxy;
@@ -102,7 +104,7 @@ pub use bandwidth::{
     AdaptiveRateLimiter, BandwidthController, NetworkMetrics, NetworkMonitor, QualityProfile,
     QualityTier,
 };
-pub use config::{NooshdarooConfig, ShapeShiftConfig, TrafficShapingConfig};
+pub use config::{NooshdarooConfig, ShapeShiftConfig, TrafficShapingConfig, TransportType, ServerConfig};
 pub use library::ProtocolLibrary;
 pub use mobile::{MobileConfigBuilder, NooshdarooMobileConfig};
 pub use noise_transport::{
@@ -117,7 +119,8 @@ pub use shapeshift::ShapeShiftController;
 pub use socat::{Bidirectional, ClientToServer, RelayMode, ServerToClient, SocatBuilder, SocatRelay};
 pub use strategy::{ShapeShiftStrategy, StrategyType};
 pub use transport::{
-    DatagramTransport, StreamTransport, TransportConfig, TransportSemantics, TransportType,
+    DatagramTransport, StreamTransport, TransportConfig, TransportSemantics,
+    TransportType as TransportLayerType,
 };
 pub use socks_udp::{UdpSocksHeader, UdpSocksServer};
 pub use udp_proxy::{SimpleUdpForwarder, UdpProxyServer};

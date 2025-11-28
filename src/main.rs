@@ -14,7 +14,9 @@ use tokio::sync::RwLock;
 use nooshdaroo::{
     Bidirectional, ClientToServer, NoiseTransport, NooshdarooClient, NooshdarooConfig,
     NooshdarooServer, ProxyType, ServerToClient, SocatBuilder, UnifiedProxyListener,
+    DnsUdpTunnelServer, DnsUdpTunnelClient, DnsUdpTunnelClientPipelined,
 };
+use nooshdaroo::config::TransportType;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const BUILD_DATE: &str = env!("BUILD_DATE");
@@ -310,7 +312,7 @@ async fn run_client(
     info!("Starting Nooshdaroo client on {}", bind);
 
     // Load config from profile, config file, or default (in priority order)
-    let mut config = if let Some(profile_name) = profile {
+    let config = if let Some(profile_name) = profile {
         info!("Loading preset profile: {}", profile_name);
         nooshdaroo::profiles::load_profile(profile_name)?
     } else if let Some(ref path) = config_path {
@@ -318,6 +320,11 @@ async fn run_client(
     } else {
         NooshdarooConfig::default()
     };
+
+    // Check transport type - UDP requires different code path
+    if config.socks.transport == TransportType::Udp {
+        return run_udp_client(config, bind, server, proxy_type, protocol, port).await;
+    }
 
     let client = NooshdarooClient::new(config.clone())?;
     let proxy_type = match proxy_type {
@@ -425,6 +432,256 @@ async fn run_client(
     Ok(())
 }
 
+/// Run client in UDP DNS tunnel mode
+/// This accepts SOCKS5 connections locally via TCP, then tunnels them via UDP DNS packets
+async fn run_udp_client(
+    config: NooshdarooConfig,
+    bind: &str,
+    server: Option<&str>,
+    proxy_type: &str,
+    _protocol: Option<&str>,
+    port: Option<u16>,
+) -> Result<()> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use rand::Rng;
+
+    info!("Starting Nooshdaroo UDP DNS tunnel client");
+
+    // Determine bind address
+    let bind_addr: SocketAddr = config.socks.listen_addr;
+
+    // Determine server address
+    let server_addr_str = match (config.socks.server_address.as_deref(), server) {
+        (Some(config_server), _) => {
+            info!("Using server address from config: {}", config_server);
+            config_server.to_string()
+        }
+        (None, Some(cli_server)) => {
+            info!("Using server address from CLI: {}", cli_server);
+            cli_server.to_string()
+        }
+        (None, None) => {
+            anyhow::bail!("No server address specified for UDP tunnel");
+        }
+    };
+
+    let mut server_addr: SocketAddr = server_addr_str.parse()
+        .context(format!("Invalid server address: {}", server_addr_str))?;
+
+    if let Some(port_override) = port {
+        info!("Overriding server port: {}", port_override);
+        server_addr.set_port(port_override);
+    }
+
+    info!("UDP DNS tunnel mode: {} -> {}", bind_addr, server_addr);
+    info!("Proxy type: {}", proxy_type);
+
+    // Start local TCP listener for SOCKS5
+    let listener = tokio::net::TcpListener::bind(bind_addr).await?;
+    info!("UDP DNS tunnel client listening on {} (SOCKS5 via TCP -> UDP DNS tunnel)", bind_addr);
+
+    loop {
+        match listener.accept().await {
+            Ok((mut client_stream, client_addr)) => {
+                let server = server_addr;
+
+                tokio::spawn(async move {
+                    if let Err(e) = handle_udp_tunnel_connection(&mut client_stream, client_addr, server).await {
+                        log::error!("UDP tunnel connection error from {}: {}", client_addr, e);
+                    }
+                });
+            }
+            Err(e) => {
+                warn!("Accept error: {}", e);
+            }
+        }
+    }
+}
+
+/// Handle a single SOCKS5 connection and tunnel it via UDP DNS
+async fn handle_udp_tunnel_connection(
+    client: &mut tokio::net::TcpStream,
+    client_addr: SocketAddr,
+    server_addr: SocketAddr,
+) -> Result<()> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use rand::Rng;
+
+    log::debug!("New SOCKS5 connection from {} for UDP tunnel", client_addr);
+
+    // SOCKS5 handshake
+    let mut buf = [0u8; 256];
+
+    // Read greeting (version + nmethods + methods)
+    let n = client.read(&mut buf[..2]).await?;
+    if n < 2 || buf[0] != 0x05 {
+        anyhow::bail!("Invalid SOCKS5 greeting");
+    }
+    let nmethods = buf[1] as usize;
+    client.read_exact(&mut buf[..nmethods]).await?;
+
+    // Send method selection (no auth)
+    client.write_all(&[0x05, 0x00]).await?;
+
+    // Read connection request
+    client.read_exact(&mut buf[..4]).await?;
+    if buf[0] != 0x05 || buf[1] != 0x01 {
+        anyhow::bail!("Invalid SOCKS5 request");
+    }
+
+    let addr_type = buf[3];
+    let target_addr = match addr_type {
+        0x01 => {
+            // IPv4
+            client.read_exact(&mut buf[..4]).await?;
+            let ip = std::net::Ipv4Addr::new(buf[0], buf[1], buf[2], buf[3]);
+            format!("{}", ip)
+        }
+        0x03 => {
+            // Domain name
+            client.read_exact(&mut buf[..1]).await?;
+            let len = buf[0] as usize;
+            client.read_exact(&mut buf[..len]).await?;
+            String::from_utf8_lossy(&buf[..len]).to_string()
+        }
+        0x04 => {
+            // IPv6
+            client.read_exact(&mut buf[..16]).await?;
+            let ip = std::net::Ipv6Addr::new(
+                u16::from_be_bytes([buf[0], buf[1]]),
+                u16::from_be_bytes([buf[2], buf[3]]),
+                u16::from_be_bytes([buf[4], buf[5]]),
+                u16::from_be_bytes([buf[6], buf[7]]),
+                u16::from_be_bytes([buf[8], buf[9]]),
+                u16::from_be_bytes([buf[10], buf[11]]),
+                u16::from_be_bytes([buf[12], buf[13]]),
+                u16::from_be_bytes([buf[14], buf[15]]),
+            );
+            format!("{}", ip)
+        }
+        _ => anyhow::bail!("Unsupported address type: {}", addr_type),
+    };
+
+    // Read port
+    client.read_exact(&mut buf[..2]).await?;
+    let target_port = u16::from_be_bytes([buf[0], buf[1]]);
+
+    log::info!("SOCKS5 CONNECT request to {}:{} via UDP DNS tunnel", target_addr, target_port);
+
+    // Create DNS tunnel client with random session ID
+    let session_id: u16 = rand::thread_rng().gen();
+    let local_bind: SocketAddr = "0.0.0.0:0".parse().unwrap();
+    let dns_client = DnsUdpTunnelClient::new(server_addr, local_bind, session_id);
+
+    // Send CONNECT request to server via UDP DNS
+    // Protocol: [cmd:1][addr_type:1][addr_len:1][addr:var][port:2]
+    let mut connect_req = Vec::new();
+    connect_req.push(0x01); // CONNECT command
+    connect_req.push(0x03); // Domain type
+    connect_req.push(target_addr.len() as u8);
+    connect_req.extend_from_slice(target_addr.as_bytes());
+    connect_req.extend_from_slice(&target_port.to_be_bytes());
+
+    let response = match dns_client.send_and_receive(connect_req).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            // Send SOCKS5 failure response
+            let reply = [0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0];
+            let _ = client.write_all(&reply).await;
+            anyhow::bail!("UDP tunnel connect failed: {}", e);
+        }
+    };
+
+    // Check response status
+    if response.is_empty() || response[0] != 0x00 {
+        let reply = [0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0];
+        let _ = client.write_all(&reply).await;
+        anyhow::bail!("Server returned error status");
+    }
+
+    // Send SOCKS5 success response
+    let reply = [0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0];
+    client.write_all(&reply).await?;
+
+    log::debug!("SOCKS5 handshake complete, starting bidirectional relay via UDP DNS");
+
+    // Bidirectional relay via UDP DNS with adaptive polling
+    // DNS is request-response based, so we must poll for server data
+    // Adaptive strategy: poll faster when data is flowing, slower when idle
+    let mut client_buf = vec![0u8; 65536];
+    let mut poll_interval_ms = 10u64; // Start fast (10ms)
+    let mut consecutive_empty_polls = 0u32;
+    const MIN_POLL_MS: u64 = 5;    // Fastest polling (aggressive)
+    const MAX_POLL_MS: u64 = 100;  // Slowest polling (idle backoff)
+
+    loop {
+        tokio::select! {
+            // Read from local client
+            result = client.read(&mut client_buf) => {
+                match result {
+                    Ok(0) => {
+                        log::debug!("Client closed connection");
+                        break;
+                    }
+                    Ok(n) => {
+                        // Send data to server via UDP DNS and get response
+                        let mut data_req = vec![0x02]; // DATA command
+                        data_req.extend_from_slice(&client_buf[..n]);
+
+                        match dns_client.send_and_receive(data_req).await {
+                            Ok(response) => {
+                                consecutive_empty_polls = 0;
+                                poll_interval_ms = MIN_POLL_MS; // Data flowing, poll fast
+                                if response.len() > 1 {
+                                    // Response contains data from server
+                                    client.write_all(&response[1..]).await?;
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("UDP DNS tunnel error: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Client read error: {}", e);
+                        break;
+                    }
+                }
+            }
+            // Poll for server data with adaptive timing
+            _ = tokio::time::sleep(std::time::Duration::from_millis(poll_interval_ms)) => {
+                // Send POLL command (0x03) to retrieve any buffered server data
+                let poll_req = vec![0x03]; // POLL command
+
+                match dns_client.send_and_receive(poll_req).await {
+                    Ok(response) => {
+                        if response.len() > 1 {
+                            // Server has buffered data for us
+                            consecutive_empty_polls = 0;
+                            poll_interval_ms = MIN_POLL_MS; // Data available, poll fast
+                            client.write_all(&response[1..]).await?;
+                        } else {
+                            // No data available, gradually back off
+                            consecutive_empty_polls += 1;
+                            // Exponential backoff: increase interval by ~20% each empty poll
+                            if consecutive_empty_polls > 3 {
+                                poll_interval_ms = (poll_interval_ms * 6 / 5).min(MAX_POLL_MS);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("UDP DNS tunnel poll error: {}", e);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 async fn run_server(
     config_path: Option<PathBuf>,
     bind: &str,
@@ -484,7 +741,214 @@ async fn run_server(
         return Ok(());
     }
 
-    // Single-port mode (original implementation)
+    // Check transport type from config
+    let transport_type = config.server.as_ref()
+        .map(|s| s.transport)
+        .unwrap_or(TransportType::Tcp);
+
+    // UDP DNS Tunnel mode
+    if transport_type == TransportType::Udp {
+        info!("UDP DNS tunnel mode enabled on {}", bind_addr);
+        info!("This mode is optimized for Iran censorship bypass where only DNS (UDP port 53) passes DPI");
+
+        let bind_addr: std::net::SocketAddr = bind_addr.parse()?;
+        let udp_server = DnsUdpTunnelServer::new(bind_addr);
+
+        // Session map: session_id -> (target TCP stream, read buffer)
+        use std::collections::HashMap;
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+        use tokio::net::TcpStream;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        type SessionMap = Arc<RwLock<HashMap<u16, TcpStream>>>;
+        let sessions: SessionMap = Arc::new(RwLock::new(HashMap::new()));
+
+        // Handler for UDP DNS tunnel packets
+        // Protocol:
+        // - CONNECT (0x01): [cmd:1][addr_type:1][addr_len:1][addr:var][port:2]
+        // - DATA (0x02): [cmd:1][payload...]
+        // - POLL (0x03): [cmd:1] - retrieve buffered data without sending
+        // Response:
+        // - Success: [0x00][response_data...]
+        // - Error: [0x01][error_code:1]
+        let sessions_clone = sessions.clone();
+        udp_server.listen(move |session_id, client_addr, payload| {
+            let sessions = sessions_clone.clone();
+            async move {
+                if payload.is_empty() {
+                    return Err("Empty payload".to_string());
+                }
+
+                let cmd = payload[0];
+                match cmd {
+                    0x01 => {
+                        // CONNECT command
+                        if payload.len() < 5 {
+                            return Ok(vec![0x01, 0x01]); // Error: invalid request
+                        }
+
+                        let addr_type = payload[1];
+                        let (target_addr, target_port) = match addr_type {
+                            0x01 => {
+                                // IPv4
+                                if payload.len() < 8 {
+                                    return Ok(vec![0x01, 0x01]);
+                                }
+                                let ip = std::net::Ipv4Addr::new(
+                                    payload[2], payload[3], payload[4], payload[5]
+                                );
+                                let port = u16::from_be_bytes([payload[6], payload[7]]);
+                                (format!("{}:{}", ip, port), port)
+                            }
+                            0x03 => {
+                                // Domain name
+                                if payload.len() < 3 {
+                                    return Ok(vec![0x01, 0x01]);
+                                }
+                                let addr_len = payload[2] as usize;
+                                if payload.len() < 3 + addr_len + 2 {
+                                    return Ok(vec![0x01, 0x01]);
+                                }
+                                let domain = String::from_utf8_lossy(&payload[3..3+addr_len]).to_string();
+                                let port = u16::from_be_bytes([payload[3+addr_len], payload[4+addr_len]]);
+                                (format!("{}:{}", domain, port), port)
+                            }
+                            0x04 => {
+                                // IPv6
+                                if payload.len() < 20 {
+                                    return Ok(vec![0x01, 0x01]);
+                                }
+                                let ip = std::net::Ipv6Addr::new(
+                                    u16::from_be_bytes([payload[2], payload[3]]),
+                                    u16::from_be_bytes([payload[4], payload[5]]),
+                                    u16::from_be_bytes([payload[6], payload[7]]),
+                                    u16::from_be_bytes([payload[8], payload[9]]),
+                                    u16::from_be_bytes([payload[10], payload[11]]),
+                                    u16::from_be_bytes([payload[12], payload[13]]),
+                                    u16::from_be_bytes([payload[14], payload[15]]),
+                                    u16::from_be_bytes([payload[16], payload[17]]),
+                                );
+                                let port = u16::from_be_bytes([payload[18], payload[19]]);
+                                (format!("[{}]:{}", ip, port), port)
+                            }
+                            _ => {
+                                return Ok(vec![0x01, 0x08]); // Error: unsupported address type
+                            }
+                        };
+
+                        log::info!("UDP session {:04x} CONNECT to {} from {}", session_id, target_addr, client_addr);
+
+                        // Connect to target
+                        match TcpStream::connect(&target_addr).await {
+                            Ok(stream) => {
+                                // Store the connection
+                                let mut sessions_lock = sessions.write().await;
+                                sessions_lock.insert(session_id, stream);
+                                drop(sessions_lock);
+                                log::info!("UDP session {:04x} connected to {}", session_id, target_addr);
+                                Ok(vec![0x00]) // Success
+                            }
+                            Err(e) => {
+                                log::error!("UDP session {:04x} connect failed: {}", session_id, e);
+                                Ok(vec![0x01, 0x05]) // Error: connection refused
+                            }
+                        }
+                    }
+                    0x02 => {
+                        // DATA command
+                        let data = &payload[1..];
+
+                        let mut sessions_lock = sessions.write().await;
+                        if let Some(stream) = sessions_lock.get_mut(&session_id) {
+                            // Write data to target
+                            if let Err(e) = stream.write_all(data).await {
+                                log::error!("UDP session {:04x} write error: {}", session_id, e);
+                                sessions_lock.remove(&session_id);
+                                return Ok(vec![0x01, 0x04]); // Error: connection closed
+                            }
+
+                            // Read available response with short timeout
+                            let mut response_buf = vec![0u8; 65536];
+                            let read_result = tokio::time::timeout(
+                                std::time::Duration::from_millis(100),
+                                stream.read(&mut response_buf)
+                            ).await;
+
+                            let mut response = vec![0x00]; // Success prefix
+                            match read_result {
+                                Ok(Ok(0)) => {
+                                    // Connection closed by target
+                                    sessions_lock.remove(&session_id);
+                                }
+                                Ok(Ok(n)) => {
+                                    // Got data from target
+                                    response.extend_from_slice(&response_buf[..n]);
+                                }
+                                Ok(Err(e)) => {
+                                    log::debug!("UDP session {:04x} read error: {}", session_id, e);
+                                    sessions_lock.remove(&session_id);
+                                }
+                                Err(_) => {
+                                    // Timeout - no data available, that's OK
+                                }
+                            }
+                            Ok(response)
+                        } else {
+                            log::warn!("UDP session {:04x} not found", session_id);
+                            Ok(vec![0x01, 0x04]) // Error: no connection
+                        }
+                    }
+                    0x03 => {
+                        // POLL command - retrieve any buffered data from server without sending
+                        // This is essential for DNS tunneling since server can't push data
+                        let mut sessions_lock = sessions.write().await;
+                        if let Some(stream) = sessions_lock.get_mut(&session_id) {
+                            // Read available response with short timeout
+                            let mut response_buf = vec![0u8; 65536];
+                            let read_result = tokio::time::timeout(
+                                std::time::Duration::from_millis(100),
+                                stream.read(&mut response_buf)
+                            ).await;
+
+                            let mut response = vec![0x00]; // Success prefix
+                            match read_result {
+                                Ok(Ok(0)) => {
+                                    // Connection closed by target
+                                    log::debug!("UDP session {:04x} POLL: connection closed", session_id);
+                                    sessions_lock.remove(&session_id);
+                                }
+                                Ok(Ok(n)) => {
+                                    // Got data from target
+                                    log::debug!("UDP session {:04x} POLL: {} bytes available", session_id, n);
+                                    response.extend_from_slice(&response_buf[..n]);
+                                }
+                                Ok(Err(e)) => {
+                                    log::debug!("UDP session {:04x} POLL read error: {}", session_id, e);
+                                    sessions_lock.remove(&session_id);
+                                }
+                                Err(_) => {
+                                    // Timeout - no data available, that's OK
+                                }
+                            }
+                            Ok(response)
+                        } else {
+                            log::warn!("UDP session {:04x} POLL: not found", session_id);
+                            Ok(vec![0x01, 0x04]) // Error: no connection
+                        }
+                    }
+                    _ => {
+                        log::warn!("UDP session {:04x} unknown command: {}", session_id, cmd);
+                        Ok(vec![0x01, 0x07]) // Error: unknown command
+                    }
+                }
+            }
+        }).await.map_err(|e| anyhow::anyhow!("{}", e))?;
+
+        return Ok(());
+    }
+
+    // Single-port TCP mode (original implementation)
     let server = NooshdarooServer::new(config.clone())?;
 
     // Extract noise config for tunnel decryption

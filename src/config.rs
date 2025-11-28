@@ -123,6 +123,11 @@ pub struct SocksConfig {
     /// Remote server address for tunneling (client mode)
     pub server_address: Option<String>,
 
+    /// Transport type (TCP or UDP)
+    /// For Iran censorship bypass, use UDP on port 53
+    #[serde(default)]
+    pub transport: TransportType,
+
     /// Require authentication
     pub auth_required: bool,
 
@@ -138,6 +143,7 @@ impl Default for SocksConfig {
         Self {
             listen_addr: "127.0.0.1:1080".parse().unwrap(),
             server_address: None,
+            transport: TransportType::default(),
             auth_required: false,
             username: None,
             password: None,
@@ -216,11 +222,30 @@ pub enum DistributionType {
     Exponential,
 }
 
+/// Transport type (TCP or UDP)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TransportType {
+    Tcp,
+    Udp,
+}
+
+impl Default for TransportType {
+    fn default() -> Self {
+        Self::Tcp // Default to TCP for backwards compatibility
+    }
+}
+
 /// Server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Listen address
     pub listen_addr: SocketAddr,
+
+    /// Transport type (TCP or UDP)
+    /// For Iran censorship bypass, use UDP on port 53
+    #[serde(default)]
+    pub transport: TransportType,
 }
 
 /// Detection resistance configuration
@@ -318,7 +343,7 @@ mod tests {
         assert!(config.validate().is_err());
 
         // Should succeed with password
-        config.encryption.password = "test-password".to_string();
+        config.encryption.password = Some("test-password".to_string());
         assert!(config.validate().is_ok());
     }
 
@@ -326,7 +351,7 @@ mod tests {
     fn test_server_mode_validation() {
         let mut config = NooshdarooConfig::default();
         config.mode = NooshdarooMode::Server;
-        config.encryption.password = "test".to_string();
+        config.encryption.password = Some("test".to_string());
 
         // Should fail without server config
         assert!(config.validate().is_err());
@@ -334,6 +359,7 @@ mod tests {
         // Should succeed with server config
         config.server = Some(ServerConfig {
             listen_addr: "0.0.0.0:443".parse().unwrap(),
+            transport: TransportType::Tcp,
         });
         assert!(config.validate().is_ok());
     }

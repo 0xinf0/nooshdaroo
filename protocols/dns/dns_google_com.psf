@@ -4,18 +4,15 @@
 
 @SEGMENT.FORMATS
 
-  // DNS message header (12 bytes)
-  DEFINE DnsHeader
-    { NAME: transaction_id ; TYPE: u16 },     // Random transaction ID
-    { NAME: flags          ; TYPE: u16 },     // Query=0x0100, Response=0x8180
-    { NAME: questions      ; TYPE: u16 },     // Number of questions = 1
-    { NAME: answers        ; TYPE: u16 },     // Number of answers
-    { NAME: authority      ; TYPE: u16 },     // Authority RRs = 0
-    { NAME: additional     ; TYPE: u16 };     // Additional RRs = 0
-
   // DNS Query for google.com (A record)
   DEFINE DnsQuery
-    { NAME: header         ; TYPE: DnsHeader },
+    // DNS header fields (12 bytes total)
+    { NAME: transaction_id ; TYPE: [u8; 2] },     // Random transaction ID
+    { NAME: flags          ; TYPE: u16 },     // Query=0x0100, Response=0x8180
+    { NAME: questions      ; TYPE: u16 },     // Number of questions = 1
+    { NAME: answers        ; TYPE: u16 },     // Number of answers = 0
+    { NAME: authority      ; TYPE: u16 },     // Authority RRs = 0
+    { NAME: additional     ; TYPE: u16 },     // Additional RRs = 0
     // Question section: google.com A record
     { NAME: qname          ; TYPE: [u8; 12] },  // 0x06 "google" 0x03 "com" 0x00
     { NAME: qtype          ; TYPE: u16 },       // 0x0001 = A record
@@ -27,7 +24,17 @@
 
   // DNS Response (simulated A record response)
   DEFINE DnsResponse
-    { NAME: header         ; TYPE: DnsHeader },
+    // DNS header fields (12 bytes total)
+    { NAME: transaction_id ; TYPE: [u8; 2] },     // Random transaction ID
+    { NAME: flags          ; TYPE: u16 },     // Response=0x8180
+    { NAME: questions      ; TYPE: u16 },     // Number of questions = 1
+    { NAME: answers        ; TYPE: u16 },     // Number of answers = 1
+    { NAME: authority      ; TYPE: u16 },     // Authority RRs = 0
+    { NAME: additional     ; TYPE: u16 },     // Additional RRs = 0
+    // Question section: google.com A record (echo from query)
+    { NAME: qname          ; TYPE: [u8; 12] },  // 0x06 "google" 0x03 "com" 0x00
+    { NAME: qtype          ; TYPE: u16 },       // 0x0001 = A record
+    { NAME: qclass         ; TYPE: u16 },       // 0x0001 = IN (Internet)
     // Answer section: google.com A record
     { NAME: answer_name    ; TYPE: u16 },       // 0xc00c = pointer to question
     { NAME: answer_type    ; TYPE: u16 },       // 0x0001 = A record
@@ -63,6 +70,7 @@
   { FORMAT: DnsQuery; FIELD: transaction_id; SEMANTIC: RANDOM };
   { FORMAT: DnsQuery; FIELD: payload_len; SEMANTIC: LENGTH };
   { FORMAT: DnsQuery; FIELD: payload;     SEMANTIC: PAYLOAD };
+  { FORMAT: DnsQuery; FIELD: mac;         SEMANTIC: MAC };
 
   // Response header values
   { FORMAT: DnsResponse; FIELD: flags;      SEMANTIC: FIXED_VALUE(0x8180) };  // Standard response
@@ -84,6 +92,7 @@
   { FORMAT: DnsResponse; FIELD: transaction_id; SEMANTIC: RANDOM };
   { FORMAT: DnsResponse; FIELD: payload_len; SEMANTIC: LENGTH };
   { FORMAT: DnsResponse; FIELD: payload;     SEMANTIC: PAYLOAD };
+  { FORMAT: DnsResponse; FIELD: mac;         SEMANTIC: MAC };
 
 @SEGMENT.SEQUENCE
 

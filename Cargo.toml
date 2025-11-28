@@ -1,6 +1,6 @@
 [package]
 name = "nooshdaroo"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 authors = ["Sina Rabbani"]
 description = "Protocol Shape-Shifting SOCKS Proxy - Dynamic protocol emulation for encrypted proxy traffic"
@@ -66,16 +66,20 @@ libc = "0.2"
 clap = { version = "4.5", features = ["derive", "env", "cargo"] }
 
 # Noise Protocol for encrypted transport
-snow = "0.9"
+snow = { version = "0.9", features = ["risky-raw-split"] }
 base64 = "0.22"
 hex = "0.4"
+data-encoding = "2.5"  # For DNS-safe base32 encoding
+futures = "0.3"  # For join_all in pipelining
+
+# QUIC with Noise (nQUIC) transport
+quinn = "0.11"
+quinn-proto = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+ring = "0.17"
 
 # KCP reliability layer for DNS/ICMP transports
 kcp = "0.6"
-
-# QUIC transport
-quinn = "0.11"
-rustls = "0.23"
 rustls-native-certs = "0.8"
 rcgen = "0.13"
 
